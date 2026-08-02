@@ -23,7 +23,21 @@ pw list --json                        # same data for other tools
 pw dev <name>                         # start the dev server, or --stop it
 pw logs <name>                        # path to that worktree's dev server log
 pw rm <name>                          # remove worktree, workspace entry, branch, registry row
+
+pw status                             # agent, spec progress, dev URL and git state per task
+pw agent start <name>                 # a Claude session in its own tmux window
+pw agent send <name> "do the thing"   # type into it
+pw agent see <name> [--lines 60]      # what is on its screen right now
+pw agent kill <name>
 ```
+
+`pw status` marks a task with `>` when it wants you: an agent that has stopped working and
+is sitting at its prompt. Spec progress comes from `spec/<task>/plan.md`, counting the
+checklist and ignoring the manual tests, which are yours to run.
+
+Agents launch with `--permission-mode dontAsk` plus explicit grants for the file writing
+tools, because dontAsk denies everything not on the allow list and a tmux session has
+nobody to answer a permission dialog. Override with `PW_MODE`, `PW_MCP`, `PW_EDIT_TOOLS`.
 
 `pw rm` refuses while a worktree has uncommitted changes or unmerged commits. Pass
 `--force` when you mean it. The branch is deleted only when git agrees it is fully merged.

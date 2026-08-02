@@ -13,8 +13,16 @@ import {
   resolveEditor,
   startDev,
   stopDev,
+  taskStatuses,
   type WorktreeStatus,
 } from './actions';
+import {
+  agentStatus,
+  killAgent,
+  seeAgent,
+  sendToAgent,
+  startAgent,
+} from './agent';
 import type { RepoConfig } from './config';
 import { BRANCH_TYPES, type BranchType } from './slug';
 import { USAGE } from './usage';
@@ -209,6 +217,86 @@ async function actionLogs(config: RepoConfig) {
   }
 }
 
+function printStatus(config: RepoConfig) {
+  const tasks = taskStatuses(config);
+  if (!tasks.length) {
+    prompt.log.warn('no worktrees yet');
+    return;
+  }
+
+  for (const task of tasks) {
+    const agent = !task.agent.running
+      ? 'no agent'
+      : task.agent.busy
+        ? 'working'
+        : 'WAITING ON YOU';
+    const spec = task.spec
+      ? `${task.spec.done}/${task.spec.total} ${task.spec.status ?? ''}`.trim()
+      : 'no spec';
+    const body = [
+      task.name,
+      `  agent  ${agent}`,
+      `  spec   ${spec}`,
+      `  dev    ${task.devRunning ? (task.devUrl ?? 'running') : 'stopped'}`,
+      `  git    ${task.uncommitted} uncommitted, ${task.unmerged} unmerged`,
+    ].join('\n');
+
+    if (task.needsYou) prompt.log.warn(body);
+    else prompt.log.info(body);
+  }
+}
+
+async function actionAgent(config: RepoConfig) {
+  const worktree = await pickWorktree(config, 'Agent for which worktree');
+  if (!worktree) return;
+
+  const status = agentStatus(config, worktree.name);
+  const choice = await prompt.select({
+    message: status.running
+      ? `${worktree.name}: ${status.busy ? 'working' : 'waiting on you'}`
+      : `${worktree.name}: no agent running`,
+    options: status.running
+      ? [
+          { value: 'see', label: 'Show its screen' },
+          { value: 'send', label: 'Send it a message' },
+          { value: 'attach', label: 'How to attach' },
+          { value: 'kill', label: 'Kill it' },
+          { value: 'back', label: 'Back' },
+        ]
+      : [
+          { value: 'start', label: 'Start an agent here' },
+          { value: 'back', label: 'Back' },
+        ],
+  });
+  if (prompt.isCancel(choice) || choice === 'back') return;
+
+  if (choice === 'start') {
+    const started = startAgent(config, worktree.name, null);
+    prompt.log.success(`started, attach with: ${started.attachWith}`);
+    return;
+  }
+  if (choice === 'see') {
+    console.log(seeAgent(config, worktree.name, 60) ?? '(nothing captured)');
+    return;
+  }
+  if (choice === 'attach') {
+    prompt.log.info(`tmux attach -t pw-${config.name}`);
+    return;
+  }
+  if (choice === 'kill') {
+    prompt.log.success(killAgent(config, worktree.name) ? 'killed' : 'not running');
+    return;
+  }
+
+  const message = await prompt.text({
+    message: 'What to send',
+    validate: (value) => (value?.trim() ? undefined : 'required'),
+  });
+  if (prompt.isCancel(message)) return;
+  await sendToAgent(config, worktree.name, message as string);
+  prompt.log.success('sent');
+}
+
 function printList(config: RepoConfig) {
   const worktrees = listWorktrees(config);
   if (!worktrees.length) {
@@ -232,8 +320,10 @@ export async function runInteractive(config: RepoConfig) {
     const action = await prompt.select({
       message: 'What now',
       options: [
+        { value: 'status', label: 'Status of everything' },
         { value: 'list', label: 'List worktrees' },
         { value: 'create', label: 'New worktree' },
+        { value: 'agent', label: 'Agents' },
         { value: 'dev', label: 'Dev server' },
         { value: 'open', label: 'Open in editor' },
         { value: 'logs', label: 'Dev server logs' },
@@ -248,7 +338,9 @@ export async function runInteractive(config: RepoConfig) {
       return;
     }
 
+    if (action === 'status') printStatus(config);
     if (action === 'list') printList(config);
+    if (action === 'agent') await actionAgent(config);
     if (action === 'create') await actionCreate(config);
     if (action === 'dev') await actionDev(config);
     if (action === 'open') await actionOpen(config);

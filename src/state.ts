@@ -12,6 +12,7 @@ export interface WorktreeRecord {
   devPort?: number;
   devUrl?: string;
   networkUrl?: string;
+  agentSessionId?: string;
 }
 
 interface RepoState {
@@ -56,6 +57,7 @@ export function upsertWorktree(repoName: string, patch: WorktreePatch) {
     devPort: patch.devPort ?? existing?.devPort,
     devUrl: patch.devUrl ?? existing?.devUrl,
     networkUrl: patch.networkUrl ?? existing?.networkUrl,
+    agentSessionId: patch.agentSessionId ?? existing?.agentSessionId,
   };
   writeState(repoName, state);
 }

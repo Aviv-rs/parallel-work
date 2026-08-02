@@ -12,7 +12,15 @@ import {
   resolveEditor,
   startDev,
   stopDev,
+  taskStatuses,
 } from './actions';
+import {
+  killAgent,
+  runningAgents,
+  seeAgent,
+  sendToAgent,
+  startAgent,
+} from './agent';
 import { loadRepoConfig } from './config';
 import { runInteractive } from './interactive';
 import { BRANCH_TYPES, type BranchType } from './slug';
@@ -75,6 +83,85 @@ function commandList(argv: string[]) {
     console.log(
       `  git     ${worktree.uncommitted} uncommitted, ${worktree.unmerged} unmerged`,
     );
+  }
+}
+
+function commandStatus(argv: string[]) {
+  const config = loadRepoConfig();
+  const tasks = taskStatuses(config);
+
+  if (flag(argv, 'json')) {
+    console.log(JSON.stringify(tasks, null, 2));
+    return;
+  }
+  if (!tasks.length) {
+    console.log('(no worktrees)');
+    return;
+  }
+
+  for (const task of tasks) {
+    const agent = !task.agent.running
+      ? 'no agent'
+      : task.agent.busy
+        ? 'working'
+        : 'WAITING ON YOU';
+    const spec = task.spec
+      ? `${task.spec.done}/${task.spec.total} ${task.spec.status ?? ''}`.trim()
+      : 'no spec';
+    const dev = task.devRunning ? (task.devUrl ?? 'running') : 'stopped';
+
+    console.log(`${task.needsYou ? '>' : ' '} ${task.name}`);
+    console.log(`    agent  ${agent}`);
+    console.log(`    spec   ${spec}`);
+    console.log(`    dev    ${dev}`);
+    console.log(
+      `    git    ${task.branch}  ${task.uncommitted} uncommitted, ${task.unmerged} unmerged`,
+    );
+    if (task.agent.running && task.agent.lastLine) {
+      console.log(`    last   ${task.agent.lastLine.slice(0, 90)}`);
+    }
+  }
+}
+
+async function commandAgent(argv: string[]) {
+  const [subcommand, name, ...rest] = argv;
+  const config = loadRepoConfig();
+
+  if (subcommand === 'list') {
+    const running = runningAgents(config);
+    console.log(running.length ? running.join('\n') : '(no agents running)');
+    return;
+  }
+  if (!name) {
+    throw new Error('usage: pw agent <start|send|see|kill|list> <name>');
+  }
+
+  switch (subcommand) {
+    case 'start': {
+      const started = startAgent(config, name, option(argv, 'model'));
+      console.log(`started ${name} in ${started.session}`);
+      console.log(started.attachWith);
+      break;
+    }
+    case 'send': {
+      const prompt = rest.filter((part) => !part.startsWith('--')).join(' ');
+      if (!prompt) throw new Error('usage: pw agent send <name> <prompt>');
+      await sendToAgent(config, name, prompt);
+      console.log(`sent to ${name}`);
+      break;
+    }
+    case 'see': {
+      const screen = seeAgent(config, name, Number(option(argv, 'lines') ?? 60));
+      console.log(screen ?? `no running agent for '${name}'`);
+      break;
+    }
+    case 'kill':
+      console.log(
+        killAgent(config, name) ? `killed ${name}` : `no agent '${name}'`,
+      );
+      break;
+    default:
+      throw new Error('usage: pw agent <start|send|see|kill|list> <name>');
   }
 }
 
@@ -147,6 +234,12 @@ try {
     case 'list':
     case 'ls':
       commandList(argv);
+      break;
+    case 'status':
+      commandStatus(argv);
+      break;
+    case 'agent':
+      await commandAgent(argv);
       break;
     case 'dev':
       await commandDev(argv);

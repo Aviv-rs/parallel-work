@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
+import { agentStatus, type AgentStatus } from './agent';
 import type { RepoConfig } from './config';
+import { readSpecProgress, type SpecProgress } from './spec';
 import {
   clearLog,
   logTail,
@@ -39,6 +41,33 @@ export interface WorktreeStatus extends WorktreeRecord {
   devRunning: boolean;
   uncommitted: number;
   unmerged: number;
+}
+
+export interface TaskStatus extends WorktreeStatus {
+  agent: AgentStatus;
+  spec: SpecProgress | null;
+  needsYou: boolean;
+}
+
+/**
+ * Everything that can want your attention: an agent that stopped talking, a
+ * dead dev server, or work that is finished and not merged.
+ */
+export function taskStatuses(config: RepoConfig): TaskStatus[] {
+  return listWorktrees(config).map((worktree) => {
+    const agent = agentStatus(config, worktree.name);
+    const spec = readSpecProgress(
+      config.root,
+      worktree.taskId,
+      worktree.name.replace(`${config.name}-`, ''),
+    );
+    return {
+      ...worktree,
+      agent,
+      spec,
+      needsYou: agent.running && !agent.busy,
+    };
+  });
 }
 
 export function listWorktrees(config: RepoConfig): WorktreeStatus[] {
