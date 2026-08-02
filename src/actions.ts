@@ -110,6 +110,42 @@ export function devLogPath(config: RepoConfig, worktreeName: string) {
   return logPath(config.name, worktreeName);
 }
 
+const EDITOR_CANDIDATES = [
+  'cursor',
+  'code',
+  'code-insiders',
+  'windsurf',
+  'zed',
+  'subl',
+  'webstorm',
+];
+
+export const EDITOR_PATH_HELP = `No editor command found on PATH.
+
+VS Code or Cursor: open the command palette and run
+  Shell Command: Install 'code' command in PATH
+  Shell Command: Install 'cursor' command in PATH
+
+Or point pw at yours, in .parallel-work.json:
+  { "editor": "cursor" }
+or per shell:
+  export PW_EDITOR=cursor`;
+
+export function resolveEditor(config: RepoConfig) {
+  const preferred = process.env.PW_EDITOR ?? config.editor;
+  const candidates = preferred
+    ? [preferred, ...EDITOR_CANDIDATES]
+    : EDITOR_CANDIDATES;
+  return candidates.find((candidate) => tryRun('which', [candidate]).ok) ?? null;
+}
+
+export function openInEditor(config: RepoConfig, worktreePath: string) {
+  const editor = resolveEditor(config);
+  if (!editor) return null;
+  spawn(editor, [worktreePath], { detached: true, stdio: 'ignore' }).unref();
+  return editor;
+}
+
 export function readDevLog(
   config: RepoConfig,
   worktreeName: string,

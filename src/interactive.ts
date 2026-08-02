@@ -1,15 +1,16 @@
-import { spawn } from 'node:child_process';
-
 import * as prompt from '@clack/prompts';
 
 import {
+  EDITOR_PATH_HELP,
   clearDevLog,
   createWorktreeFlow,
   devLogPath,
   followDevLog,
   listWorktrees,
+  openInEditor,
   readDevLog,
   removeWorktreeFlow,
+  resolveEditor,
   startDev,
   stopDev,
   type WorktreeStatus,
@@ -90,7 +91,7 @@ async function actionCreate(config: RepoConfig) {
       (line) => spinner.message(line),
     );
     spinner.stop(`created ${created.name}`);
-    prompt.log.info(`code ${created.path}`);
+    prompt.log.info(`${resolveEditor(config) ?? 'open'} ${created.path}`);
   } catch (error) {
     spinner.stop('failed');
     prompt.log.error((error as Error).message);
@@ -155,8 +156,13 @@ async function actionDev(config: RepoConfig) {
 async function actionOpen(config: RepoConfig) {
   const worktree = await pickWorktree(config, 'Open which worktree');
   if (!worktree) return;
-  spawn('code', [worktree.path], { detached: true, stdio: 'ignore' }).unref();
-  prompt.log.success(`opened ${worktree.path}`);
+
+  const editor = openInEditor(config, worktree.path);
+  if (!editor) {
+    prompt.log.error(EDITOR_PATH_HELP);
+    return;
+  }
+  prompt.log.success(`${editor} ${worktree.path}`);
 }
 
 async function actionLogs(config: RepoConfig) {

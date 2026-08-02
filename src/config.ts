@@ -12,6 +12,7 @@ export interface RepoConfig {
   install: string | null;
   dev: string | null;
   workspaceFile: string | null;
+  editor: string | null;
 }
 
 const CONFIG_FILE = '.parallel-work.json';
@@ -46,5 +47,6 @@ export function loadRepoConfig(startDirectory = process.cwd()): RepoConfig {
     install: fileConfig.install ?? 'bun install',
     dev: fileConfig.dev ?? 'bun dev',
     workspaceFile: fileConfig.workspaceFile ?? findWorkspaceFile(root),
+    editor: fileConfig.editor ?? null,
   };
 }

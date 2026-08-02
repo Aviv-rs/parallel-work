@@ -1,12 +1,15 @@
 #!/usr/bin/env bun
 import {
+  EDITOR_PATH_HELP,
   clearDevLog,
   createWorktreeFlow,
   devLogPath,
   followDevLog,
   listWorktrees,
+  openInEditor,
   readDevLog,
   removeWorktreeFlow,
+  resolveEditor,
   startDev,
   stopDev,
 } from './actions';
@@ -47,7 +50,7 @@ async function commandCreate(argv: string[]) {
     },
     report,
   );
-  console.log(`\nopen it:   code ${created.path}`);
+  console.log(`\nopen it:   ${resolveEditor(config) ?? 'open'} ${created.path}`);
 }
 
 function commandList(argv: string[]) {
@@ -148,6 +151,16 @@ try {
     case 'dev':
       await commandDev(argv);
       break;
+    case 'open': {
+      const name = argv[0];
+      if (!name) throw new Error('usage: pw open <name>');
+      const config = loadRepoConfig();
+      const record = readState(config.name).worktrees[name];
+      if (!record) throw new Error(`no worktree '${name}' in the registry`);
+      const editor = openInEditor(config, record.path);
+      console.log(editor ? `${editor} ${record.path}` : EDITOR_PATH_HELP);
+      break;
+    }
     case 'logs':
       await commandLogs(argv);
       break;
