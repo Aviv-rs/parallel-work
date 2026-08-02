@@ -1,0 +1,19 @@
+{
+  "name": "parallel-work",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "pw": "./src/cli.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
