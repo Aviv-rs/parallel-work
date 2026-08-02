@@ -13,6 +13,7 @@ import {
 } from './actions';
 import type { RepoConfig } from './config';
 import { BRANCH_TYPES, type BranchType } from './slug';
+import { USAGE } from './usage';
 
 function describe(worktree: WorktreeStatus) {
   const dev = worktree.devRunning
@@ -190,6 +191,7 @@ export async function runInteractive(config: RepoConfig) {
         { value: 'open', label: 'Open in editor' },
         { value: 'logs', label: 'Show log path' },
         { value: 'remove', label: 'Remove worktree' },
+        { value: 'commands', label: 'Command list' },
         { value: 'quit', label: 'Quit' },
       ],
     });
@@ -205,5 +207,6 @@ export async function runInteractive(config: RepoConfig) {
     if (action === 'open') await actionOpen(config);
     if (action === 'logs') await actionLogs(config);
     if (action === 'remove') await actionRemove(config);
+    if (action === 'commands') prompt.note(USAGE, 'commands');
   }
 }

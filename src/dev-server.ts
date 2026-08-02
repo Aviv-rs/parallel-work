@@ -10,9 +10,13 @@ const ANSI_PATTERN = new RegExp(String.raw`\x1b\[[0-9;]*m`, 'g');
 
 export interface DevServerHandle {
   pid: number;
+  logFile: string;
+}
+
+export interface DevUrls {
   localUrl: string | null;
   networkUrl: string | null;
-  logFile: string;
+  died: boolean;
 }
 
 export function startDevServer(
@@ -33,25 +37,62 @@ export function startDevServer(
   });
   child.unref();
 
-  return { pid: child.pid ?? 0, localUrl: null, networkUrl: null, logFile };
+  return { pid: child.pid ?? 0, logFile };
 }
 
-export async function waitForDevUrl(logFile: string, timeoutMs = 120_000) {
+function readLog(logFile: string) {
+  if (!existsSync(logFile)) return '';
+  return readFileSync(logFile, 'utf8').replace(ANSI_PATTERN, '');
+}
+
+export function lastLogLine(logFile: string) {
+  const lines = readLog(logFile).split('\n').filter(Boolean);
+  return lines[lines.length - 1] ?? '';
+}
+
+export function logTail(logFile: string, count = 12) {
+  return readLog(logFile).split('\n').filter(Boolean).slice(-count);
+}
+
+interface WaitOptions {
+  pid: number;
+  timeoutMs?: number;
+  onProgress?: (line: string) => void;
+}
+
+export async function waitForDevUrl(
+  logFile: string,
+  { pid, timeoutMs = 120_000, onProgress }: WaitOptions,
+): Promise<DevUrls> {
   const startedAt = Date.now();
+  let lastReported = '';
+
   while (Date.now() - startedAt < timeoutMs) {
-    if (existsSync(logFile)) {
-      const text = readFileSync(logFile, 'utf8').replace(ANSI_PATTERN, '');
-      const local = text.match(LOCAL_URL_PATTERN)?.[1];
-      if (local) {
-        return {
-          localUrl: local,
-          networkUrl: text.match(NETWORK_URL_PATTERN)?.[1] ?? null,
-        };
-      }
+    const text = readLog(logFile);
+    const localUrl = text.match(LOCAL_URL_PATTERN)?.[1];
+    if (localUrl) {
+      return {
+        localUrl,
+        networkUrl: text.match(NETWORK_URL_PATTERN)?.[1] ?? null,
+        died: false,
+      };
     }
-    await Bun.sleep(500);
+
+    // The process is detached, so a crash shows up only as a dead pid.
+    if (!isProcessAlive(pid)) {
+      return { localUrl: null, networkUrl: null, died: true };
+    }
+
+    const line = lastLogLine(logFile);
+    if (onProgress && line && line !== lastReported) {
+      lastReported = line;
+      onProgress(line);
+    }
+
+    await Bun.sleep(400);
   }
-  return { localUrl: null, networkUrl: null };
+
+  return { localUrl: null, networkUrl: null, died: !isProcessAlive(pid) };
 }
 
 export function stopDevServer(pid: number | undefined) {

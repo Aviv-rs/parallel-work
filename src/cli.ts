@@ -11,22 +11,7 @@ import { loadRepoConfig } from './config';
 import { runInteractive } from './interactive';
 import { BRANCH_TYPES, type BranchType } from './slug';
 import { readState } from './state';
-
-const USAGE = `pw - parallel work across git worktrees
-
-  pw -i                         Interactive mode: browse, create, remove, dev servers
-
-  pw wt <slug> [--type feature|bugfix|chore|refactor|docs] [--no-dev] [--no-install]
-      Create a worktree, copy ignored files, install, add to the code-workspace,
-      start the dev server and print its URL.
-
-  pw rm <name> [--force]        Remove a worktree and everything pw added for it
-  pw list [--json]              Worktrees, branches, dev URLs
-  pw dev <name> [--stop]        Start or stop the dev server for a worktree
-  pw logs <name>                Path to that worktree's dev server log
-
-Slug is <TASK-ID>-<short-title>, e.g. EROS-696-onboarding-work-area.
-Config lives in .parallel-work.json at the repo root.`;
+import { USAGE } from './usage';
 
 const report = (line: string) => console.log(line);
 
@@ -118,9 +103,15 @@ const [command, ...argv] = process.argv.slice(2);
 
 try {
   switch (command) {
+    case undefined:
     case '-i':
     case '--interactive':
       await runInteractive(loadRepoConfig());
+      break;
+    case '-h':
+    case '--help':
+    case 'help':
+      console.log(USAGE);
       break;
     case 'wt':
     case 'create':
@@ -141,8 +132,9 @@ try {
       commandLogs(argv);
       break;
     default:
+      console.error(`unknown command '${command}'\n`);
       console.log(USAGE);
-      process.exit(command ? 1 : 0);
+      process.exit(1);
   }
 } catch (error) {
   console.error(`error: ${(error as Error).message}`);

@@ -1,7 +1,12 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 
 import type { RepoConfig } from './config';
-import { startDevServer, stopDevServer, waitForDevUrl } from './dev-server';
+import {
+  logTail,
+  startDevServer,
+  stopDevServer,
+  waitForDevUrl,
+} from './dev-server';
 import { logPath } from './state';
 import { parseSlug, type BranchType } from './slug';
 import { run, tryRun } from './shell';
@@ -24,6 +29,8 @@ import {
 } from './worktree';
 
 export type Report = (line: string) => void;
+
+const DEV_URL_TIMEOUT_MS = 60_000;
 
 export interface WorktreeStatus extends WorktreeRecord {
   exists: boolean;
@@ -61,7 +68,11 @@ export async function startDev(
     worktreePath,
     config.dev,
   );
-  const { localUrl, networkUrl } = await waitForDevUrl(handle.logFile);
+  const { localUrl, networkUrl, died } = await waitForDevUrl(handle.logFile, {
+    pid: handle.pid,
+    timeoutMs: DEV_URL_TIMEOUT_MS,
+    onProgress: (line) => report(`dev        ${line.slice(0, 80)}`),
+  });
 
   upsertWorktree(config.name, {
     name: worktreeName,
@@ -78,18 +89,12 @@ export async function startDev(
     return { localUrl, networkUrl };
   }
 
-  if (isProcessAlive(handle.pid)) {
-    report(`dev        still starting, no URL yet: pw logs ${worktreeName}`);
-    return { localUrl: null, networkUrl: null };
-  }
-
-  report(`dev        FAILED, last lines of the log:`);
-  for (const line of readFileSync(handle.logFile, 'utf8')
-    .split('\n')
-    .filter(Boolean)
-    .slice(-12)) {
-    report(`           ${line}`);
-  }
+  report(
+    died
+      ? 'dev        FAILED, last lines of the log:'
+      : `dev        no URL after ${DEV_URL_TIMEOUT_MS / 1000}s, still running. Last lines:`,
+  );
+  for (const line of logTail(handle.logFile)) report(`           ${line}`);
   return { localUrl: null, networkUrl: null };
 }
 
