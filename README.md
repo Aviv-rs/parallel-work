@@ -16,6 +16,7 @@ ln -sf "$PWD/src/cli.ts" ~/.local/bin/pw
 ## Use
 
 ```bash
+pw -i                                 # interactive: browse, create, remove, dev servers
 pw wt EROS-696-onboarding-work-area   # create everything and start the dev server
 pw list                               # branches, dev URLs, uncommitted and unmerged counts
 pw list --json                        # same data for other tools

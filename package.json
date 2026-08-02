@@ -15,5 +15,8 @@
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.7.0"
   }
 }
