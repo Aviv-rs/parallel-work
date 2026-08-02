@@ -1,7 +1,9 @@
+import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
 import type { RepoConfig } from './config';
 import {
+  clearLog,
   logTail,
   startDevServer,
   stopDevServer,
@@ -70,6 +72,7 @@ export async function startDev(
   );
   const { localUrl, networkUrl, died } = await waitForDevUrl(handle.logFile, {
     pid: handle.pid,
+    fromOffset: handle.runStartOffset,
     timeoutMs: DEV_URL_TIMEOUT_MS,
     onProgress: (line) => report(`dev        ${line.slice(0, 80)}`),
   });
@@ -105,6 +108,40 @@ export function stopDev(config: RepoConfig, worktreeName: string) {
 
 export function devLogPath(config: RepoConfig, worktreeName: string) {
   return logPath(config.name, worktreeName);
+}
+
+export function readDevLog(
+  config: RepoConfig,
+  worktreeName: string,
+  lineCount: number,
+) {
+  return logTail(logPath(config.name, worktreeName), lineCount);
+}
+
+export function clearDevLog(config: RepoConfig, worktreeName: string) {
+  clearLog(logPath(config.name, worktreeName));
+}
+
+export function followDevLog(config: RepoConfig, worktreeName: string) {
+  const child = spawn('tail', ['-f', logPath(config.name, worktreeName)], {
+    stdio: 'inherit',
+  });
+
+  // Ctrl-C has to reach tail without also killing pw.
+  const ownSigintHandlers = process.listeners('SIGINT');
+  process.removeAllListeners('SIGINT');
+  const forwardInterrupt = () => child.kill('SIGINT');
+  process.on('SIGINT', forwardInterrupt);
+
+  return new Promise<void>((resolve) => {
+    child.on('exit', () => {
+      process.removeListener('SIGINT', forwardInterrupt);
+      for (const handler of ownSigintHandlers) {
+        process.on('SIGINT', handler as () => void);
+      }
+      resolve();
+    });
+  });
 }
 
 interface CreateOptions {

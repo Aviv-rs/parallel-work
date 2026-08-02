@@ -1,8 +1,11 @@
 #!/usr/bin/env bun
 import {
+  clearDevLog,
   createWorktreeFlow,
   devLogPath,
+  followDevLog,
   listWorktrees,
+  readDevLog,
   removeWorktreeFlow,
   startDev,
   stopDev,
@@ -93,10 +96,27 @@ async function commandDev(argv: string[]) {
   await startDev(config, name, record.path, report);
 }
 
-function commandLogs(argv: string[]) {
+async function commandLogs(argv: string[]) {
   const name = argv[0];
-  if (!name) throw new Error('usage: pw logs <name>');
-  console.log(devLogPath(loadRepoConfig(), name));
+  if (!name) throw new Error('usage: pw logs <name> [--tail N] [--follow]');
+
+  const config = loadRepoConfig();
+  if (flag(argv, 'follow')) {
+    await followDevLog(config, name);
+    return;
+  }
+  if (flag(argv, 'clear')) {
+    clearDevLog(config, name);
+    console.log('log cleared');
+    return;
+  }
+
+  const tail = option(argv, 'tail');
+  if (!tail) {
+    console.log(devLogPath(config, name));
+    return;
+  }
+  console.log(readDevLog(config, name, Number(tail)).join('\n'));
 }
 
 const [command, ...argv] = process.argv.slice(2);
@@ -129,7 +149,7 @@ try {
       await commandDev(argv);
       break;
     case 'logs':
-      commandLogs(argv);
+      await commandLogs(argv);
       break;
     default:
       console.error(`unknown command '${command}'\n`);

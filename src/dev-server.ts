@@ -1,5 +1,12 @@
 import { spawn } from 'node:child_process';
-import { existsSync, openSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  statSync,
+  truncateSync,
+} from 'node:fs';
 
 import { logPath, isProcessAlive } from './state';
 
@@ -11,6 +18,7 @@ const ANSI_PATTERN = new RegExp(String.raw`\x1b\[[0-9;]*m`, 'g');
 export interface DevServerHandle {
   pid: number;
   logFile: string;
+  runStartOffset: number;
 }
 
 export interface DevUrls {
@@ -26,7 +34,11 @@ export function startDevServer(
   devCommand: string,
 ): DevServerHandle {
   const logFile = logPath(repoName, worktreeName);
-  writeFileSync(logFile, '');
+  const runStartOffset = existsSync(logFile) ? statSync(logFile).size : 0;
+  appendFileSync(
+    logFile,
+    `\n=== run ${new Date().toISOString()}  ${devCommand}  in ${worktreePath} ===\n`,
+  );
   const logHandle = openSync(logFile, 'a');
 
   const child = spawn(devCommand, {
@@ -37,38 +49,44 @@ export function startDevServer(
   });
   child.unref();
 
-  return { pid: child.pid ?? 0, logFile };
+  return { pid: child.pid ?? 0, logFile, runStartOffset };
 }
 
-function readLog(logFile: string) {
+function readLog(logFile: string, fromOffset = 0) {
   if (!existsSync(logFile)) return '';
-  return readFileSync(logFile, 'utf8').replace(ANSI_PATTERN, '');
+  const text = readFileSync(logFile, 'utf8');
+  return (fromOffset ? text.slice(fromOffset) : text).replace(ANSI_PATTERN, '');
 }
 
-export function lastLogLine(logFile: string) {
-  const lines = readLog(logFile).split('\n').filter(Boolean);
+export function lastLogLine(logFile: string, fromOffset = 0) {
+  const lines = readLog(logFile, fromOffset).split('\n').filter(Boolean);
   return lines[lines.length - 1] ?? '';
 }
 
-export function logTail(logFile: string, count = 12) {
-  return readLog(logFile).split('\n').filter(Boolean).slice(-count);
+export function logTail(logFile: string, count = 12, fromOffset = 0) {
+  return readLog(logFile, fromOffset).split('\n').filter(Boolean).slice(-count);
+}
+
+export function clearLog(logFile: string) {
+  if (existsSync(logFile)) truncateSync(logFile, 0);
 }
 
 interface WaitOptions {
   pid: number;
+  fromOffset?: number;
   timeoutMs?: number;
   onProgress?: (line: string) => void;
 }
 
 export async function waitForDevUrl(
   logFile: string,
-  { pid, timeoutMs = 120_000, onProgress }: WaitOptions,
+  { pid, fromOffset = 0, timeoutMs = 120_000, onProgress }: WaitOptions,
 ): Promise<DevUrls> {
   const startedAt = Date.now();
   let lastReported = '';
 
   while (Date.now() - startedAt < timeoutMs) {
-    const text = readLog(logFile);
+    const text = readLog(logFile, fromOffset);
     const localUrl = text.match(LOCAL_URL_PATTERN)?.[1];
     if (localUrl) {
       return {
@@ -83,7 +101,7 @@ export async function waitForDevUrl(
       return { localUrl: null, networkUrl: null, died: true };
     }
 
-    const line = lastLogLine(logFile);
+    const line = lastLogLine(logFile, fromOffset);
     if (onProgress && line && line !== lastReported) {
       lastReported = line;
       onProgress(line);

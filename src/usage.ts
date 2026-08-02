@@ -9,7 +9,8 @@ export const USAGE = `pw - parallel work across git worktrees
   pw rm <name> [--force]        Remove a worktree and everything pw added for it
   pw list [--json]              Worktrees, branches, dev URLs
   pw dev <name> [--stop]        Start or stop the dev server for a worktree
-  pw logs <name>                Path to that worktree's dev server log
+  pw logs <name> [--tail N] [--follow] [--clear]
+                                Dev server log: path, last N lines, or live
   pw help                       This list
 
 Slug is <TASK-ID>-<short-title>, e.g. EROS-696-onboarding-work-area.

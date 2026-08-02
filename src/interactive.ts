@@ -3,9 +3,12 @@ import { spawn } from 'node:child_process';
 import * as prompt from '@clack/prompts';
 
 import {
+  clearDevLog,
   createWorktreeFlow,
   devLogPath,
+  followDevLog,
   listWorktrees,
+  readDevLog,
   removeWorktreeFlow,
   startDev,
   stopDev,
@@ -159,7 +162,45 @@ async function actionOpen(config: RepoConfig) {
 async function actionLogs(config: RepoConfig) {
   const worktree = await pickWorktree(config, 'Logs for which worktree');
   if (!worktree) return;
-  prompt.log.info(devLogPath(config, worktree.name));
+
+  for (;;) {
+    const choice = await prompt.select({
+      message: `Logs for ${worktree.name}`,
+      options: [
+        { value: '50', label: 'Last 50 lines' },
+        { value: '200', label: 'Last 200 lines' },
+        { value: 'follow', label: 'Follow live', hint: 'Ctrl-C to come back' },
+        { value: 'path', label: 'Show the file path' },
+        { value: 'clear', label: 'Clear history' },
+        { value: 'back', label: 'Back' },
+      ],
+    });
+    if (prompt.isCancel(choice) || choice === 'back') return;
+
+    if (choice === 'path') {
+      prompt.log.info(devLogPath(config, worktree.name));
+      continue;
+    }
+
+    if (choice === 'clear') {
+      clearDevLog(config, worktree.name);
+      prompt.log.success('log cleared');
+      continue;
+    }
+
+    if (choice === 'follow') {
+      prompt.log.info('following, Ctrl-C to stop');
+      await followDevLog(config, worktree.name);
+      continue;
+    }
+
+    const lines = readDevLog(config, worktree.name, Number(choice));
+    if (!lines.length) {
+      prompt.log.warn('log is empty');
+      continue;
+    }
+    console.log(lines.join('\n'));
+  }
 }
 
 function printList(config: RepoConfig) {
@@ -189,7 +230,7 @@ export async function runInteractive(config: RepoConfig) {
         { value: 'create', label: 'New worktree' },
         { value: 'dev', label: 'Dev server' },
         { value: 'open', label: 'Open in editor' },
-        { value: 'logs', label: 'Show log path' },
+        { value: 'logs', label: 'Dev server logs' },
         { value: 'remove', label: 'Remove worktree' },
         { value: 'commands', label: 'Command list' },
         { value: 'quit', label: 'Quit' },
