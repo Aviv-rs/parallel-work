@@ -54,13 +54,17 @@ export interface AgentStatus {
  */
 const BUSY_MARKERS = ['esc to interrupt', 'Running…', 'tokens'];
 
-export function agentStatus(config: RepoConfig, name: string): AgentStatus {
+export function agentStatus(
+  config: RepoConfig,
+  name: string,
+  worktreePath?: string,
+): AgentStatus {
   const session = tmuxSessionName(config.name);
-  if (!hasSession(session) || !resolveTarget(session, name)) {
+  if (!hasSession(session) || !resolveTarget(session, name, worktreePath)) {
     return { name, running: false, busy: false, lastLine: '' };
   }
 
-  const screen = capturePane(session, name, 40) ?? '';
+  const screen = capturePane(session, name, 40, worktreePath) ?? '';
   const lines = screen.split('\n').filter((line) => line.trim());
   const lastLine = lines.at(-1)?.trim() ?? '';
   const busy = BUSY_MARKERS.some((marker) => screen.includes(marker));
@@ -108,11 +112,18 @@ export async function sendToAgent(
 }
 
 export function seeAgent(config: RepoConfig, worktreeName: string, lines: number) {
-  return capturePane(tmuxSessionName(config.name), worktreeName, lines);
+  const record = readState(config.name).worktrees[worktreeName];
+  return capturePane(
+    tmuxSessionName(config.name),
+    worktreeName,
+    lines,
+    record?.path,
+  );
 }
 
 export function killAgent(config: RepoConfig, worktreeName: string) {
-  return killWindow(tmuxSessionName(config.name), worktreeName);
+  const record = readState(config.name).worktrees[worktreeName];
+  return killWindow(tmuxSessionName(config.name), worktreeName, record?.path);
 }
 
 export function runningAgents(config: RepoConfig) {

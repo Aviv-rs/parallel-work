@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { run, tryRun } from './shell';
 
@@ -41,12 +41,14 @@ function gridMap(session: string) {
  * silently stops resolving. Pane ids survive the TUI, layout changes and
  * rotation, so the grid map is keyed on those.
  */
-export function resolveTarget(session: string, name: string) {
+export function resolveTarget(
+  session: string,
+  name: string,
+  worktreePath?: string,
+) {
   if (listWindows(session).includes(name)) return `${session}:${name}`;
 
   const paneId = gridMap(session)[name];
-  if (!paneId) return null;
-
   const livePanes = tryRun('tmux', [
     'list-panes',
     '-s',
@@ -55,7 +57,33 @@ export function resolveTarget(session: string, name: string) {
     '-F',
     '#{pane_id}',
   ]).stdout.split('\n');
-  return livePanes.includes(paneId) ? paneId : null;
+  if (paneId && livePanes.includes(paneId)) return paneId;
+
+  return worktreePath ? paneInDirectory(session, worktreePath) : null;
+}
+
+/**
+ * The window name is a convention, not a guarantee: a session started by hand
+ * or by another driver sits in the same tmux session under whatever name its
+ * author chose. The directory a pane is running in is the durable identity, so
+ * a worktree's agent is findable however its window was named.
+ */
+function paneInDirectory(session: string, worktreePath: string) {
+  const panes = tryRun('tmux', [
+    'list-panes',
+    '-s',
+    '-t',
+    session,
+    '-F',
+    '#{pane_id}\t#{pane_current_path}',
+  ]).stdout.split('\n');
+
+  const wanted = resolve(worktreePath);
+  const hit = panes.find((pane) => {
+    const [, paneDirectory] = pane.split('\t');
+    return paneDirectory ? resolve(paneDirectory) === wanted : false;
+  });
+  return hit?.split('\t')[0] ?? null;
 }
 
 export function startWindow(
@@ -88,12 +116,22 @@ export function startWindow(
   run('tmux', ['new-window', '-t', session, '-n', name, '-c', cwd, command]);
 }
 
-export function killWindow(session: string, name: string) {
-  return tryRun('tmux', ['kill-window', '-t', `${session}:${name}`]).ok;
+export function killWindow(
+  session: string,
+  name: string,
+  worktreePath?: string,
+) {
+  const target = resolveTarget(session, name, worktreePath);
+  return target ? tryRun('tmux', ['kill-window', '-t', target]).ok : false;
 }
 
-export function capturePane(session: string, name: string, lines: number) {
-  const target = resolveTarget(session, name);
+export function capturePane(
+  session: string,
+  name: string,
+  lines: number,
+  worktreePath?: string,
+) {
+  const target = resolveTarget(session, name, worktreePath);
   if (!target) return null;
   return tryRun('tmux', ['capture-pane', '-t', target, '-p', '-S', `-${lines}`])
     .stdout;
@@ -111,7 +149,7 @@ export function sendPrompt(
   prompt: string,
   worktreePath: string,
 ) {
-  const target = resolveTarget(session, name);
+  const target = resolveTarget(session, name, worktreePath);
   if (!target) return null;
 
   let text = prompt;

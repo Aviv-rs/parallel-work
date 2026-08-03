@@ -6,6 +6,7 @@ import type { RepoConfig } from './config';
 import { readSpecProgress, type SpecProgress } from './spec';
 import {
   clearLog,
+  devUrlsFromLog,
   logTail,
   startDevServer,
   stopDevServer,
@@ -55,9 +56,11 @@ export interface TaskStatus extends WorktreeStatus {
  */
 export function taskStatuses(config: RepoConfig): TaskStatus[] {
   return listWorktrees(config).map((worktree) => {
-    const agent = agentStatus(config, worktree.name);
+    const agent = agentStatus(config, worktree.name, worktree.path);
+    // The worktree's own copy first: the agent ticks its checklist there, so
+    // the main checkout's copy reports zero progress for the whole run.
     const spec = readSpecProgress(
-      config.root,
+      [worktree.exists ? worktree.path : '', config.root],
       worktree.taskId,
       worktree.name.replace(`${config.name}-`, ''),
     );
@@ -74,10 +77,21 @@ export function listWorktrees(config: RepoConfig): WorktreeStatus[] {
   const state = readState(config.name);
   return Object.values(state.worktrees).map((record) => {
     const exists = existsSync(record.path);
+    const devRunning = isProcessAlive(record.devPid);
+    // A server whose URL arrived after the startup wait gave up is still a
+    // running server; read it back off the log instead of reporting a bare
+    // "running" with no address.
+    const recovered =
+      devRunning && !record.devUrl
+        ? devUrlsFromLog(logPath(config.name, record.name))
+        : null;
+
     return {
       ...record,
+      devUrl: record.devUrl ?? recovered?.localUrl ?? undefined,
+      networkUrl: record.networkUrl ?? recovered?.networkUrl ?? undefined,
       exists,
-      devRunning: isProcessAlive(record.devPid),
+      devRunning,
       uncommitted: exists ? uncommittedChanges(record.path) : 0,
       unmerged: exists ? unmergedCommits(record.path, config.baseBranch) : 0,
     };

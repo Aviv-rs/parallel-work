@@ -67,6 +67,21 @@ export function logTail(logFile: string, count = 12, fromOffset = 0) {
   return readLog(logFile, fromOffset).split('\n').filter(Boolean).slice(-count);
 }
 
+/**
+ * Recovers the URL of a server that is still up but whose URL never reached the
+ * registry, e.g. it printed after the startup wait gave up. The last match wins
+ * because the log accumulates every run of that worktree.
+ */
+export function devUrlsFromLog(logFile: string): Omit<DevUrls, 'died'> {
+  const text = readLog(logFile);
+  const locals = [...text.matchAll(new RegExp(LOCAL_URL_PATTERN, 'g'))];
+  const networks = [...text.matchAll(new RegExp(NETWORK_URL_PATTERN, 'g'))];
+  return {
+    localUrl: locals.at(-1)?.[1] ?? null,
+    networkUrl: networks.at(-1)?.[1] ?? null,
+  };
+}
+
 export function clearLog(logFile: string) {
   if (existsSync(logFile)) truncateSync(logFile, 0);
 }

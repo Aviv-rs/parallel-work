@@ -250,7 +250,7 @@ async function actionAgent(config: RepoConfig) {
   const worktree = await pickWorktree(config, 'Agent for which worktree');
   if (!worktree) return;
 
-  const status = agentStatus(config, worktree.name);
+  const status = agentStatus(config, worktree.name, worktree.path);
   const choice = await prompt.select({
     message: status.running
       ? `${worktree.name}: ${status.busy ? 'working' : 'waiting on you'}`
