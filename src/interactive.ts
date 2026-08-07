@@ -398,12 +398,12 @@ async function actionWorktrees(config: RepoConfig) {
     const choice = await prompt.select({
       message: 'Worktrees',
       options: [
-        { value: 'list', label: 'List' },
         { value: 'create', label: 'New worktree' },
+        { value: 'remove', label: 'Remove worktree' },
+        { value: 'list', label: 'List' },
         { value: 'dev', label: 'Dev server' },
         { value: 'logs', label: 'Dev server logs' },
         { value: 'open', label: 'Open in editor' },
-        { value: 'remove', label: 'Remove worktree' },
         { value: 'back', label: 'Back' },
       ],
     });
