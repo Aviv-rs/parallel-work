@@ -1,6 +1,7 @@
 export const USAGE = `pw - parallel work across git worktrees
 
   pw                            Interactive mode: browse, create, remove, dev servers
+  pw init                       Write .parallel-work.json for this repo, asking first
 
   pw wt <slug> [--type feature|bugfix|chore|refactor|docs] [--no-dev] [--no-install]
       Create a worktree, copy ignored files, install, add to the code-workspace,

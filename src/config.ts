@@ -15,7 +15,15 @@ export interface RepoConfig {
   editor: string | null;
 }
 
-const CONFIG_FILE = '.parallel-work.json';
+export const CONFIG_FILE = '.parallel-work.json';
+
+export function configPath(root: string) {
+  return join(root, CONFIG_FILE);
+}
+
+export function hasConfigFile(root: string) {
+  return existsSync(configPath(root));
+}
 
 const DEFAULT_COPY = ['.env', '.env.local', '.claude', 'playwright/.auth'];
 

@@ -24,6 +24,7 @@ import {
 import { loadRepoConfig } from './config';
 import { runInteractive } from './interactive';
 import { BRANCH_TYPES, type BranchType } from './slug';
+import { runSetup } from './setup';
 import { readState } from './state';
 import { USAGE } from './usage';
 
@@ -222,6 +223,9 @@ try {
     case '--help':
     case 'help':
       console.log(USAGE);
+      break;
+    case 'init':
+      await runSetup(loadRepoConfig().root);
       break;
     case 'wt':
     case 'create':
