@@ -36,25 +36,25 @@ const MOOD_COLOR: Record<Mood, keyof typeof COLORS> = {
  */
 const SPRITES: Record<Mood, string[][]> = {
   alert: [
-    ['   !   ', ' ┌───┐ ', ' │✕ ✕│ ', ' └┴─┴┘ '],
-    ['   ‼   ', ' ┌───┐ ', ' │✕ ✕│ ', ' └┴─┴┘ '],
+    ['  ▄█▄ !', ' ▟███▙ ', ' │✕ ✕│ ', ' └┴─┴┘ '],
+    ['  ▄█▄ ‼', ' ▟███▙ ', ' │✕ ✕│ ', ' └┴─┴┘ '],
   ],
   waiting: [
-    ['  ╭╧╮  ', '╲┌───┐ ', ' │◉ ◉│ ', ' └┴─┴┘ '],
-    ['╲ ╭╧╮  ', ' ┌───┐ ', ' │◉ ◉│ ', ' └┴─┴┘ '],
+    ['  ▄█▄  ', '╲▟███▙ ', ' │◉ ◉│ ', ' └┴─┴┘ '],
+    ['╲ ▄█▄  ', ' ▟███▙ ', ' │◉ ◉│ ', ' └┴─┴┘ '],
   ],
   working: [
-    ['  ╭╧╮  ', ' ┌───┐ ', ' │● ●│ ', ' └┴─┴┘ '],
-    ['  ╭╧╮  ', ' ┌───┐ ', ' │◕ ◕│ ', ' └┴─┴┘ '],
-    ['  ╭╧╮  ', ' ┌───┐ ', ' │● ●│ ', ' └┬─┬┘ '],
-    ['  ╭╧╮  ', ' ┌───┐ ', ' │─ ─│ ', ' └┴─┴┘ '],
+    ['  ▄█▄  ', ' ▟███▙ ', ' │● ●│ ', ' └┬─┬┘ '],
+    ['  ▄█▄  ', ' ▟███▙ ', ' │◕ ◕│ ', ' └┴─┴┘ '],
+    ['  ▄█▄  ', ' ▟███▙ ', ' │● ●│ ', ' └┴─┴┘ '],
+    ['  ▄█▄  ', ' ▟███▙ ', ' │─ ─│ ', ' └┬─┬┘ '],
   ],
   asleep: [
-    ['     z ', ' ┌───┐ ', ' │─ ─│ ', ' └┴─┴┘ '],
-    ['    z  ', ' ┌───┐ ', ' │─ ─│ ', ' └┴─┴┘ '],
-    ['   Z   ', ' ┌───┐ ', ' │─ ─│ ', ' └┴─┴┘ '],
+    ['  ▄█▄ z', ' ▟███▙ ', ' │─ ─│ ', ' └┴─┴┘ '],
+    ['  ▄█▄ z', ' ▟███▙ ', ' │─ ─│ ', ' └┴─┴┘ '],
+    ['  ▄█▄ Z', ' ▟███▙ ', ' │─ ─│ ', ' └┴─┴┘ '],
   ],
-  empty: [['       ', ' ┌───┐ ', ' │· ·│ ', ' └┴─┴┘ ']],
+  empty: [['  ▄█▄  ', ' ▟███▙ ', ' │· ·│ ', ' └┴─┴┘ ']],
 };
 
 /**
@@ -67,18 +67,24 @@ export function captionFor(tasks: TaskStatus[], mood: Mood): string {
 
   if (mood === 'waiting') {
     const waiting = tasks.filter((task) => task.needsYou);
-    const inReview = waiting.some(
-      (task) => task.pullRequest || /review/i.test(task.spec?.status ?? ''),
-    );
-    return inReview ? 'needs review' : 'needs you';
+    return waiting.some(isInReview) ? 'needs review' : 'needs you';
   }
+
+  // A task with an open PR is in review whatever its last checklist box says,
+  // so the state wins over the arithmetic. "43/44 done" is technically true and
+  // tells you nothing about what to do next.
+  const inReview = tasks.filter(isInReview);
+  if (inReview.length === tasks.length) return 'in review';
+  if (inReview.length > 0) return `${inReview.length} in review`;
 
   const { done, total } = totalProgress(tasks);
   if (!total) return mood === 'working' ? 'working' : 'no plans';
-  if (done === total) {
-    return tasks.some((task) => task.pullRequest) ? 'in review' : 'all done';
-  }
+  if (done === total) return 'all done';
   return `${done}/${total} done`;
+}
+
+function isInReview(task: TaskStatus) {
+  return Boolean(task.pullRequest) || /review/i.test(task.spec?.status ?? '');
 }
 
 /**

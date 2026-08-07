@@ -89,6 +89,19 @@ describe('captionFor', () => {
     expect(captionFor(tasks, 'working')).toBe('3/10 done');
   });
 
+  it('says in review while boxes are still open, because the PR is the state', () => {
+    const nearlyDone = task({
+      spec: { file: 'p', status: null, done: 32, total: 33 },
+      pullRequest: openPullRequest,
+    });
+    expect(captionFor([nearlyDone], 'working')).toBe('in review');
+  });
+
+  it('counts how many are in review when only some are', () => {
+    const reviewing = task({ pullRequest: openPullRequest });
+    expect(captionFor([reviewing, task()], 'working')).toBe('1 in review');
+  });
+
   it('says in review once the work is finished and a PR is open', () => {
     const finished = task({
       spec: { file: 'p', status: null, done: 5, total: 5 },
