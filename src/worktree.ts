@@ -37,8 +37,38 @@ export function createWorktree({
     ? ['worktree', 'add', worktreePath, branch]
     : ['worktree', 'add', '-b', branch, worktreePath, config.baseBranch];
   run('git', args, config.root);
+  excludeFromGit(config.root, PROMPT_DIRECTORY);
 
   return worktreePath;
+}
+
+/** Where `pw agent send` parks a multi-line prompt. */
+export const PROMPT_DIRECTORY = '.pw-prompts/';
+
+/**
+ * Into `.git/info/exclude`, not `.gitignore`: the prompts are pw's business,
+ * and a tool that edits a tracked file to hide its own scratch space is a tool
+ * that shows up in someone's pull request.
+ */
+export function excludeFromGit(root: string, pattern: string) {
+  const commonDir = tryRun(
+    'git',
+    ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+    root,
+  );
+  if (!commonDir.ok) return false;
+
+  const excludeFile = join(commonDir.stdout.trim(), 'info', 'exclude');
+  if (!existsSync(excludeFile)) return false;
+
+  const current = readFileSync(excludeFile, 'utf8');
+  if (current.split('\n').some((line) => line.trim() === pattern)) return false;
+
+  writeFileSync(
+    excludeFile,
+    `${current.endsWith('\n') || current === '' ? current : `${current}\n`}${pattern}\n`,
+  );
+  return true;
 }
 
 export function copyIgnoredFiles(config: RepoConfig, worktreePath: string) {

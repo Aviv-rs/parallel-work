@@ -156,9 +156,14 @@ The first message is the only context a session gets for free. It must include:
 - That it ticks and strikes its plan checklist as it goes, so an interrupted run shows
   where it stopped.
 
-Write it to a file in the worktree and send that path. `pw agent send` does this for you
-when the text is multi-line: a newline inside `send-keys` submits, so a multi-line message
-would otherwise fire as several half-prompts.
+**Do not write kickoff or hand-off notes into the worktree yourself.** They land in the
+human's git status, in their editor's source control panel, and eventually in a pull
+request. `pw agent send` already handles a multi-line prompt: it parks the text in
+`.pw-prompts/`, which pw excludes from git, keeps the last few for retracing, and points
+the agent at the path. A file is needed at all only because a newline inside `send-keys`
+submits, so a multi-line message would otherwise fire as several half-prompts.
+
+The plan file is the durable artifact. Everything else is a prompt.
 
 ## Before handing work back: the converge pass
 

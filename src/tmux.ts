@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { run, tryRun } from './shell';
@@ -158,6 +158,7 @@ export function sendPrompt(
     mkdirSync(promptDirectory, { recursive: true });
     const promptFile = join(promptDirectory, `${name}-${Bun.nanoseconds()}.md`);
     writeFileSync(promptFile, `${prompt}\n`);
+    prunePrompts(promptDirectory);
     text = `Read ${promptFile} in full and do what it says.`;
   }
 
@@ -217,6 +218,29 @@ export function tileShells(
   run('tmux', ['select-layout', '-t', `${session}:${TILE_WINDOW}`, 'tiled']);
   tryRun('tmux', ['set-option', '-t', session, '-w', 'pane-border-status', 'top']);
   return { session, window: TILE_WINDOW };
+}
+
+const PROMPTS_KEPT = 5;
+
+/**
+ * The newest few stay readable for anyone retracing what an agent was told;
+ * the rest are litter. Deleting the one just written would race the agent,
+ * which reads it a beat after the keystroke lands.
+ */
+function prunePrompts(promptDirectory: string) {
+  const files = readdirSync(promptDirectory).filter((file) =>
+    file.endsWith('.md'),
+  );
+  const oldestFirst = files
+    .map((file) => ({
+      file,
+      at: statSync(join(promptDirectory, file)).mtimeMs,
+    }))
+    .sort((left, right) => left.at - right.at);
+
+  for (const { file } of oldestFirst.slice(0, -PROMPTS_KEPT)) {
+    rmSync(join(promptDirectory, file), { force: true });
+  }
 }
 
 export function gridWindows(session: string, names: string[]) {
