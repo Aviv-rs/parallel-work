@@ -14,16 +14,28 @@ import {
   startDev,
   stopDev,
   taskStatuses,
+  type TaskStatus,
   type WorktreeStatus,
 } from './actions';
 import {
+  AGENT_BINARIES,
   agentStatus,
+  isAgentCliInstalled,
   killAgent,
   seeAgent,
   sendToAgent,
   startAgent,
 } from './agent';
-import type { RepoConfig } from './config';
+import { hasConfigFile, loadRepoConfig, type RepoConfig } from './config';
+import { liveMenu } from './live-menu';
+import { statusBoard } from './pixel-agent';
+import {
+  AGENT_CLIS,
+  readSettings,
+  writeSettings,
+  type AgentCli,
+} from './settings';
+import { runSetup } from './setup';
 import { BRANCH_TYPES, type BranchType } from './slug';
 import { USAGE } from './usage';
 
@@ -310,42 +322,158 @@ function printList(config: RepoConfig) {
   }
 }
 
-export async function runInteractive(config: RepoConfig) {
+const AGENT_CLI_LABELS: Record<AgentCli, string> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  cursor: 'Cursor CLI',
+};
+
+async function chooseAgentCli(current: AgentCli) {
+  const picked = await prompt.select({
+    message: 'Which agent does "Start an agent here" launch',
+    options: AGENT_CLIS.map((cli) => ({
+      value: cli,
+      label: `${AGENT_CLI_LABELS[cli]}${cli === current ? ' (current)' : ''}`,
+      hint: isAgentCliInstalled(cli)
+        ? AGENT_BINARIES[cli]
+        : `${AGENT_BINARIES[cli]} not on PATH`,
+    })),
+    initialValue: current,
+  });
+  if (prompt.isCancel(picked)) return;
+
+  const next = writeSettings({ agentCli: picked as AgentCli });
+  prompt.log.success(`agent CLI: ${AGENT_CLI_LABELS[next.agentCli]}`);
+  if (!isAgentCliInstalled(next.agentCli)) {
+    prompt.log.warn(
+      `${AGENT_BINARIES[next.agentCli]} is not on PATH, so starting an agent will fail until it is`,
+    );
+  }
+  if (next.agentCli !== 'claude') {
+    prompt.log.info(
+      'Only the Claude flags are ones pw depends on. If this CLI\'s flags differ, set agentCommands in ~/.parallel-work/settings.json to replace the launch command.',
+    );
+  }
+}
+
+async function actionSettings() {
+  for (;;) {
+    const settings = readSettings();
+    const choice = await prompt.select({
+      message: 'Settings',
+      options: [
+        {
+          value: 'toggleLive',
+          label: `Live status board: ${settings.liveStatus ? 'on' : 'off'}`,
+          hint: settings.liveStatus
+            ? 'the board and its pixel agent sit above the main menu'
+            : 'status lives only under "Status of everything"',
+        },
+        {
+          value: 'agentCli',
+          label: `Agent CLI: ${AGENT_CLI_LABELS[settings.agentCli]}`,
+          hint: AGENT_BINARIES[settings.agentCli],
+        },
+        { value: 'back', label: 'Back' },
+      ],
+    });
+    if (prompt.isCancel(choice) || choice === 'back') return;
+
+    if (choice === 'toggleLive') {
+      const next = writeSettings({ liveStatus: !settings.liveStatus });
+      prompt.log.success(`live status board ${next.liveStatus ? 'on' : 'off'}`);
+    }
+    if (choice === 'agentCli') await chooseAgentCli(settings.agentCli);
+  }
+}
+
+/** Everything that acts on a worktree, one level down from the main menu. */
+async function actionWorktrees(config: RepoConfig) {
+  for (;;) {
+    const choice = await prompt.select({
+      message: 'Worktrees',
+      options: [
+        { value: 'list', label: 'List' },
+        { value: 'create', label: 'New worktree' },
+        { value: 'dev', label: 'Dev server' },
+        { value: 'logs', label: 'Dev server logs' },
+        { value: 'open', label: 'Open in editor' },
+        { value: 'remove', label: 'Remove worktree' },
+        { value: 'back', label: 'Back' },
+      ],
+    });
+    if (prompt.isCancel(choice) || choice === 'back') return;
+
+    if (choice === 'list') printList(config);
+    if (choice === 'create') await actionCreate(config);
+    if (choice === 'dev') await actionDev(config);
+    if (choice === 'logs') await actionLogs(config);
+    if (choice === 'open') await actionOpen(config);
+    if (choice === 'remove') await actionRemove(config);
+  }
+}
+
+const MAIN_MENU = [
+  { value: 'status', label: 'Status of everything' },
+  { value: 'worktrees', label: 'Worktrees' },
+  { value: 'agent', label: 'Agents' },
+  { value: 'commands', label: 'Command list' },
+  { value: 'settings', label: 'Settings' },
+  { value: 'quit', label: 'Quit' },
+] as const;
+
+type MainAction = (typeof MAIN_MENU)[number]['value'];
+
+/** The board already shows it, so the entry only earns its place without one. */
+function mainMenuFor(liveStatus: boolean) {
+  return MAIN_MENU.filter(
+    (option) => option.value !== 'status' || !liveStatus,
+  ).map((option) => ({ ...option }));
+}
+
+async function chooseAction(config: RepoConfig): Promise<MainAction | null> {
+  const { liveStatus } = readSettings();
+  const options = mainMenuFor(liveStatus);
+
+  if (!liveStatus) {
+    const picked = await prompt.select({ message: 'What now', options });
+    return prompt.isCancel(picked) ? null : (picked as MainAction);
+  }
+
+  return liveMenu<MainAction, TaskStatus[]>({
+    message: 'What now',
+    options,
+    data: () => taskStatuses(config),
+    board: (tasks, tick) =>
+      statusBoard(tasks, tick, (process.stdout.columns ?? 80) - 1),
+  });
+}
+
+export async function runInteractive(initialConfig: RepoConfig) {
   if (!process.stdin.isTTY) {
     throw new Error('pw -i needs a terminal, run it without piping input');
   }
+  let config = initialConfig;
   prompt.intro(`parallel-work  ${config.name}  (${config.root})`);
 
-  for (;;) {
-    const action = await prompt.select({
-      message: 'What now',
-      options: [
-        { value: 'status', label: 'Status of everything' },
-        { value: 'list', label: 'List worktrees' },
-        { value: 'create', label: 'New worktree' },
-        { value: 'agent', label: 'Agents' },
-        { value: 'dev', label: 'Dev server' },
-        { value: 'open', label: 'Open in editor' },
-        { value: 'logs', label: 'Dev server logs' },
-        { value: 'remove', label: 'Remove worktree' },
-        { value: 'commands', label: 'Command list' },
-        { value: 'quit', label: 'Quit' },
-      ],
-    });
+  // First run in this repo: the dev command is the one thing pw cannot guess
+  // safely, and a wrong one fails much later, when a worktree will not start.
+  if (!hasConfigFile(config.root) && (await runSetup(config.root))) {
+    config = loadRepoConfig(config.root);
+  }
 
-    if (prompt.isCancel(action) || action === 'quit') {
+  for (;;) {
+    const action = await chooseAction(config);
+
+    if (action === null || action === 'quit') {
       prompt.outro('bye');
       return;
     }
 
     if (action === 'status') printStatus(config);
-    if (action === 'list') printList(config);
+    if (action === 'worktrees') await actionWorktrees(config);
     if (action === 'agent') await actionAgent(config);
-    if (action === 'create') await actionCreate(config);
-    if (action === 'dev') await actionDev(config);
-    if (action === 'open') await actionOpen(config);
-    if (action === 'logs') await actionLogs(config);
-    if (action === 'remove') await actionRemove(config);
     if (action === 'commands') prompt.note(USAGE, 'commands');
+    if (action === 'settings') await actionSettings();
   }
 }
