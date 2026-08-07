@@ -9,9 +9,41 @@ printed.
 ## Install
 
 ```bash
-bun install
+bun add --global github:Aviv-rs/parallel-work
+```
+
+`pw` lands in `~/.bun/bin`, which has to be on your `PATH`. To try it without installing
+anything: `bunx github:Aviv-rs/parallel-work status`.
+
+Working on the tool itself instead:
+
+```bash
+git clone https://github.com/Aviv-rs/parallel-work.git
+cd parallel-work && bun install
 ln -sf "$PWD/src/cli.ts" ~/.local/bin/pw
 ```
+
+### What it needs
+
+- **bun**, on macOS or Linux. The entry point is TypeScript with a `bun` shebang.
+- **git**.
+- **tmux** and the **claude** CLI, for `pw agent` and the agent column of the status
+  board. Everything else works without them.
+- A dev command that picks its own free port. Two worktrees sharing one hardcoded port
+  means the second silently serves the first one's app, which shows up as a 404 on a route
+  that plainly exists.
+
+### First run
+
+The first bare `pw` in a repo with no `.parallel-work.json` offers to write one. It reads
+what it can off the repo first, so the fast path is accepting what it found:
+
+- install and dev commands from the lockfile and `package.json` scripts
+- base branch from `origin/HEAD`
+- ticket prefix from the shape of your existing branch names
+- which gitignored files exist and are worth copying
+
+Say "not now" and pw runs on defaults and asks again next time. `pw init` re-runs it.
 
 ## Use
 
@@ -35,9 +67,49 @@ pw agent kill <name>
 is sitting at its prompt. Spec progress comes from `spec/<task>/plan.md`, counting the
 checklist and ignoring the manual tests, which are yours to run.
 
-Agents launch with `--permission-mode dontAsk` plus explicit grants for the file writing
+### Interactive mode
+
+Bare `pw` opens a menu with a live status board above it, refreshed every few seconds
+while you sit there. The board carries a small pixel agent whose colour is the headline:
+red when something broke, yellow when an agent wants you, cyan while they work, blue when
+everything is stopped. Its caption names the actual condition, `dev stopped` or
+`needs review`, not a mood.
+
+The menu is `Worktrees` (list, create, dev server, logs, open, remove), `Agents`, a
+command list, and settings. `Status of everything` only appears when the live board is
+switched off, since otherwise it is already on screen. Settings toggles the board and
+persists to `~/.parallel-work/settings.json`.
+
+### Agents
+
+`pw agent start` launches **Claude Code** by default; Settings switches it to **Codex** or
+the **Cursor CLI**, and the menu says which of the three is actually on your PATH.
+
+Claude launches with `--permission-mode dontAsk` plus explicit grants for the file writing
 tools, because dontAsk denies everything not on the allow list and a tmux session has
 nobody to answer a permission dialog. Override with `PW_MODE`, `PW_MCP`, `PW_EDIT_TOOLS`.
+
+Only those Claude flags are ones pw depends on. Codex and Cursor get a reasonable
+auto-approval flag and nothing more, and CLIs move fast, so when their flags change set
+`agentCommands` in `~/.parallel-work/settings.json` to replace the launch command outright:
+
+```json
+{ "agentCli": "codex", "agentCommands": { "codex": "codex --sandbox workspace-write" } }
+```
+
+Killing the **last** running agent takes the whole tmux session with it, since tmux drops a
+session when its final window closes. Nothing is lost: transcripts live outside tmux, and a
+Claude session resumes with `claude -r <session-id>` inside that worktree.
+
+### Driving it with Claude
+
+`skill/` in this repo is a Claude Code skill that teaches Claude to run the whole workflow:
+plan before creating anything, one session per worktree, relay messages, converge at the
+end. It is optional, the CLI stands on its own.
+
+```bash
+ln -s "$(pwd)/skill" ~/.claude/skills/parallel-work
+```
 
 `pw rm` refuses while a worktree has uncommitted changes or unmerged commits. Pass
 `--force` when you mean it. The branch is deleted only when git agrees it is fully merged.
@@ -77,8 +149,11 @@ leaves a gitlink that can be committed by accident.
 anything gitignored is missing and the failure usually points somewhere else. A missing
 `playwright/.auth` shows up as a module resolution error, not a missing file.
 
+Written for you by the first run or by `pw init`, so hand-editing is optional.
+
 State lives in `~/.parallel-work/<repo>.json`, dev server logs in
-`~/.parallel-work/logs/<repo>/<worktree>.log`.
+`~/.parallel-work/logs/<repo>/<worktree>.log`, and your preferences, the live board and the
+agent CLI, in `~/.parallel-work/settings.json`.
 
 ## Notes
 
