@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
 import type { RepoConfig } from './config';
+import { readSettings, type AgentCli } from './settings';
+import { tryRun } from './shell';
 import { readState, upsertWorktree } from './state';
 import {
   capturePane,
@@ -39,6 +41,37 @@ function claudeCommand(model: string | null) {
   ]
     .filter(Boolean)
     .join(' ');
+}
+
+/**
+ * Every agent needs the same thing from pw: start in this directory and keep
+ * working without a human to approve each step. Only claude's flags are ones
+ * pw depends on; the others are best-effort defaults, which is why
+ * `agentCommands` in settings can replace them outright when a CLI changes.
+ */
+export const AGENT_BINARIES: Record<AgentCli, string> = {
+  claude: 'claude',
+  codex: 'codex',
+  cursor: 'cursor-agent',
+};
+
+export function agentCommand(model: string | null, settings = readSettings()) {
+  const override = settings.agentCommands[settings.agentCli]?.trim();
+  if (override) return model ? `${override} ${model}` : override;
+
+  if (settings.agentCli === 'claude') return claudeCommand(model);
+  if (settings.agentCli === 'codex') {
+    return ['codex', '--full-auto', model ? `-m ${model}` : '']
+      .filter(Boolean)
+      .join(' ');
+  }
+  return ['cursor-agent', '--force', model ? `-m ${model}` : '']
+    .filter(Boolean)
+    .join(' ');
+}
+
+export function isAgentCliInstalled(cli: AgentCli) {
+  return tryRun('which', [AGENT_BINARIES[cli]]).ok;
 }
 
 export interface AgentStatus {
@@ -81,7 +114,7 @@ export function startAgent(
   if (!record) throw new Error(`no worktree '${worktreeName}'`);
 
   const session = tmuxSessionName(config.name);
-  startWindow(session, worktreeName, record.path, claudeCommand(model));
+  startWindow(session, worktreeName, record.path, agentCommand(model));
   upsertWorktree(config.name, {
     name: worktreeName,
     agentSessionId: record.agentSessionId ?? randomUUID(),
