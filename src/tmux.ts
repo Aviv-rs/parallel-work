@@ -165,6 +165,60 @@ export function sendPrompt(
   return { target, submit: () => run('tmux', ['send-keys', '-t', target, 'Enter']) };
 }
 
+const TILE_WINDOW = 'tiles';
+
+export interface TileTarget {
+  name: string;
+  cwd: string;
+}
+
+/**
+ * A pane per worktree, each an ordinary shell already in the right directory.
+ * This is the terminal-only way to work several tickets at once: no editor, no
+ * agent, just the folders side by side.
+ */
+export function tileShells(
+  session: string,
+  targets: TileTarget[],
+  shell = process.env.SHELL || '/bin/sh',
+) {
+  if (!hasSession(session)) {
+    run('tmux', [
+      'new-session', '-d', '-s', session, '-n', TILE_WINDOW,
+      '-c', targets[0]!.cwd, '-x', '200', '-y', '50', shell,
+    ]);
+  } else if (listWindows(session).includes(TILE_WINDOW)) {
+    run('tmux', ['kill-window', '-t', `${session}:${TILE_WINDOW}`]);
+    run('tmux', [
+      'new-window', '-t', session, '-n', TILE_WINDOW, '-c', targets[0]!.cwd, shell,
+    ]);
+  } else {
+    run('tmux', [
+      'new-window', '-t', session, '-n', TILE_WINDOW, '-c', targets[0]!.cwd, shell,
+    ]);
+  }
+
+  const firstPane = run('tmux', [
+    'display-message', '-p', '-t', `${session}:${TILE_WINDOW}`, '#{pane_id}',
+  ]);
+  run('tmux', ['select-pane', '-t', firstPane, '-T', targets[0]!.name]);
+
+  for (const target of targets.slice(1)) {
+    // Re-tile after every split, or tmux runs out of room around the fourth
+    // pane and refuses with "no space for new pane".
+    run('tmux', ['select-layout', '-t', `${session}:${TILE_WINDOW}`, 'tiled']);
+    const paneId = run('tmux', [
+      'split-window', '-t', `${session}:${TILE_WINDOW}`,
+      '-c', target.cwd, '-P', '-F', '#{pane_id}', shell,
+    ]);
+    run('tmux', ['select-pane', '-t', paneId, '-T', target.name]);
+  }
+
+  run('tmux', ['select-layout', '-t', `${session}:${TILE_WINDOW}`, 'tiled']);
+  tryRun('tmux', ['set-option', '-t', session, '-w', 'pane-border-status', 'top']);
+  return { session, window: TILE_WINDOW };
+}
+
 export function gridWindows(session: string, names: string[]) {
   let gridTarget = '';
   const map: string[] = [];

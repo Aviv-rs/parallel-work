@@ -191,6 +191,16 @@ export async function runSetup(root: string): Promise<boolean> {
   });
   if (prompt.isCancel(taskPrefix)) return false;
 
+  // A terminal-only user has no workspace file to keep in sync, and adding
+  // entries to one they never open is noise in their git status.
+  const workspaceFile = detected.workspaceFile
+    ? await prompt.confirm({
+        message: `Add each worktree to ${detected.workspaceFile}?`,
+        initialValue: true,
+      })
+    : false;
+  if (prompt.isCancel(workspaceFile)) return false;
+
   const copy =
     detected.copy.length > 0
       ? await prompt.multiselect({
@@ -211,7 +221,7 @@ export async function runSetup(root: string): Promise<boolean> {
     copy: copy as string[],
     install: install.trim(),
     dev: dev.trim(),
-    workspaceFile: detected.workspaceFile,
+    workspaceFile: workspaceFile ? detected.workspaceFile : null,
   });
   prompt.log.success(`wrote ${CONFIG_FILE}`);
   return true;

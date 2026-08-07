@@ -58,6 +58,10 @@ pw dev <name>                         # start the dev server, or --stop it
 pw logs <name>                        # path to that worktree's dev server log
 pw rm <name>                          # remove worktree, workspace entry, branch, registry row
 
+pw tile [name...]                     # one tmux pane per worktree, tiled, all shells
+pw shell <name>                       # a shell in that worktree, exit to come back
+pw path <name>                        # cd "$(pw path <name>)"
+
 pw status                             # agent, spec progress, dev URL and git state per task
 pw agent start <name>                 # a Claude session in its own tmux window
 pw agent send <name> "do the thing"   # type into it
@@ -84,6 +88,17 @@ The menu is `Worktrees` (list, create, dev server, logs, open, remove), `Agents`
 command list, and settings. `Status of everything` only appears when the live board is
 switched off, since otherwise it is already on screen. Settings toggles the board and
 persists to `~/.parallel-work/settings.json`.
+
+### Without an editor
+
+Nothing here needs one. `pw tile` puts every worktree on screen at once, a tmux pane each,
+already in the right directory and titled with its name, which is the split-screen version
+of working three tickets in parallel. `pw shell <name>` drops you into one, and
+`cd "$(pw path <name>)"` moves the shell you are already in.
+
+The setup wizard asks before wiring worktrees into a `.code-workspace`, and answering no
+leaves your editor out of it entirely. `pw agent tile` does the same trick for running
+agents, pulling their windows into panes of one window; `pw agent untile` splits them back.
 
 ### Agents
 

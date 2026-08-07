@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
 import { agentStatus, type AgentStatus } from './agent';
@@ -13,6 +13,7 @@ import {
   waitForDevUrl,
 } from './dev-server';
 import { findPullRequest, type PullRequest } from './pull-request';
+import { tileShells, tmuxSessionName } from './tmux';
 import { logPath } from './state';
 import { parseSlug, type BranchType } from './slug';
 import { run, tryRun } from './shell';
@@ -185,6 +186,46 @@ export function resolveEditor(config: RepoConfig) {
     ? [preferred, ...EDITOR_CANDIDATES]
     : EDITOR_CANDIDATES;
   return candidates.find((candidate) => tryRun('which', [candidate]).ok) ?? null;
+}
+
+/**
+ * Tiles every worktree, or the named ones, as shells in one tmux window. The
+ * editor path is optional; this is the terminal-only equivalent.
+ */
+export function tileWorktrees(config: RepoConfig, names: string[]) {
+  const worktrees = listWorktrees(config).filter((worktree) => worktree.exists);
+  const wanted = names.length
+    ? names.map((name) => {
+        const match = worktrees.find((worktree) => worktree.name === name);
+        if (!match) throw new Error(`no worktree '${name}'`);
+        return match;
+      })
+    : worktrees;
+
+  if (!wanted.length) throw new Error('no worktrees to tile');
+
+  return tileShells(
+    tmuxSessionName(config.name),
+    wanted.map((worktree) => ({ name: worktree.name, cwd: worktree.path })),
+  );
+}
+
+export function worktreePath(config: RepoConfig, name: string) {
+  const record = readState(config.name).worktrees[name];
+  if (!record) throw new Error(`no worktree '${name}'`);
+  return record.path;
+}
+
+/**
+ * A shell already in the worktree, for people who do not want an editor. It
+ * blocks: pw is done until the user exits the shell, which is the behaviour
+ * anyone typing `pw shell` expects.
+ */
+export function openShell(config: RepoConfig, name: string) {
+  const cwd = worktreePath(config, name);
+  const shell = process.env.SHELL || '/bin/sh';
+  spawnSync(shell, { cwd, stdio: 'inherit' });
+  return { cwd, shell };
 }
 
 export function openInEditor(config: RepoConfig, worktreePath: string) {

@@ -13,9 +13,13 @@ export const USAGE = `pw - parallel work across git worktrees
   pw logs <name> [--tail N] [--follow] [--clear]
                                 Dev server log: path, last N lines, or live
   pw open <name>                Open a worktree in your editor
+  pw shell <name>               A shell in that worktree, no editor needed
+  pw path <name>                Print its path, for cd "$(pw path <name>)"
+  pw tile [name...]             One tmux pane per worktree, tiled, all shells
   pw status [--json]            Everything: agent, spec progress, dev URL, git
   pw agent start|send|see|kill|list <name>
-                                Claude sessions in tmux, one window per worktree
+                                Agent sessions in tmux, one window per worktree
+  pw agent tile | untile        Every agent as a pane of one window, and back
   pw help                       This list
 
 Slug is <TASK-ID>-<short-title>, e.g. EROS-696-onboarding-work-area.

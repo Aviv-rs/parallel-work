@@ -8,12 +8,14 @@ import {
   followDevLog,
   listWorktrees,
   openInEditor,
+  openShell,
   readDevLog,
   removeWorktreeFlow,
   resolveEditor,
   startDev,
   stopDev,
   taskStatuses,
+  tileWorktrees,
   type TaskStatus,
   type WorktreeStatus,
 } from './actions';
@@ -392,6 +394,41 @@ async function actionSettings() {
   }
 }
 
+async function actionTile(config: RepoConfig) {
+  const worktrees = listWorktrees(config).filter((worktree) => worktree.exists);
+  if (!worktrees.length) {
+    prompt.log.warn('no worktrees to tile');
+    return;
+  }
+
+  const picked = await prompt.multiselect({
+    message: 'Tile which worktrees',
+    options: worktrees.map((worktree) => ({
+      value: worktree.name,
+      label: worktree.name,
+      hint: describe(worktree),
+    })),
+    initialValues: worktrees.map((worktree) => worktree.name),
+    required: true,
+  });
+  if (prompt.isCancel(picked)) return;
+
+  try {
+    const tiled = tileWorktrees(config, picked as string[]);
+    prompt.log.success(`tiled into ${tiled.session}:${tiled.window}`);
+    prompt.log.info(`tmux attach -t ${tiled.session}`);
+  } catch (error) {
+    prompt.log.error(error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function actionShell(config: RepoConfig) {
+  const worktree = await pickWorktree(config, 'Shell in which worktree');
+  if (!worktree) return;
+  prompt.log.info(`${worktree.path}, exit the shell to come back to pw`);
+  openShell(config, worktree.name);
+}
+
 /** Everything that acts on a worktree, one level down from the main menu. */
 async function actionWorktrees(config: RepoConfig) {
   for (;;) {
@@ -401,6 +438,8 @@ async function actionWorktrees(config: RepoConfig) {
         { value: 'create', label: 'New worktree' },
         { value: 'remove', label: 'Remove worktree' },
         { value: 'list', label: 'List' },
+        { value: 'tile', label: 'Tile them all in tmux', hint: 'one shell per worktree' },
+        { value: 'shell', label: 'Open a shell here' },
         { value: 'dev', label: 'Dev server' },
         { value: 'logs', label: 'Dev server logs' },
         { value: 'open', label: 'Open in editor' },
@@ -410,6 +449,8 @@ async function actionWorktrees(config: RepoConfig) {
     if (prompt.isCancel(choice) || choice === 'back') return;
 
     if (choice === 'list') printList(config);
+    if (choice === 'tile') await actionTile(config);
+    if (choice === 'shell') await actionShell(config);
     if (choice === 'create') await actionCreate(config);
     if (choice === 'dev') await actionDev(config);
     if (choice === 'logs') await actionLogs(config);

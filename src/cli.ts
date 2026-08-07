@@ -7,12 +7,15 @@ import {
   followDevLog,
   listWorktrees,
   openInEditor,
+  openShell,
   readDevLog,
   removeWorktreeFlow,
   resolveEditor,
   startDev,
   stopDev,
   taskStatuses,
+  tileWorktrees,
+  worktreePath,
 } from './actions';
 import {
   killAgent,
@@ -25,6 +28,7 @@ import { loadRepoConfig } from './config';
 import { runInteractive } from './interactive';
 import { BRANCH_TYPES, type BranchType } from './slug';
 import { runSetup } from './setup';
+import { gridWindows, tmuxSessionName, ungridWindows } from './tmux';
 import { readState } from './state';
 import { USAGE } from './usage';
 
@@ -133,6 +137,19 @@ async function commandAgent(argv: string[]) {
     console.log(running.length ? running.join('\n') : '(no agents running)');
     return;
   }
+  if (subcommand === 'tile') {
+    const running = runningAgents(config).filter((window) => window !== 'grid');
+    if (!running.length) throw new Error('no agents running to tile');
+    gridWindows(tmuxSessionName(config.name), running);
+    console.log(`tiled ${running.length} agents into one window`);
+    console.log(`tmux attach -t ${tmuxSessionName(config.name)}`);
+    return;
+  }
+  if (subcommand === 'untile') {
+    ungridWindows(tmuxSessionName(config.name));
+    console.log('agents split back into their own windows');
+    return;
+  }
   if (!name) {
     throw new Error('usage: pw agent <start|send|see|kill|list> <name>');
   }
@@ -162,7 +179,9 @@ async function commandAgent(argv: string[]) {
       );
       break;
     default:
-      throw new Error('usage: pw agent <start|send|see|kill|list> <name>');
+      throw new Error(
+        'usage: pw agent <start|send|see|kill|list|tile|untile> <name>',
+      );
   }
 }
 
@@ -227,6 +246,28 @@ try {
     case 'init':
       await runSetup(loadRepoConfig().root);
       break;
+    case 'tile': {
+      const config = loadRepoConfig();
+      const tiled = tileWorktrees(
+        config,
+        argv.filter((part) => !part.startsWith('--')),
+      );
+      console.log(`tiled into ${tiled.session}:${tiled.window}`);
+      console.log(`tmux attach -t ${tiled.session}`);
+      break;
+    }
+    case 'shell': {
+      const name = argv[0];
+      if (!name) throw new Error('usage: pw shell <name>');
+      openShell(loadRepoConfig(), name);
+      break;
+    }
+    case 'path': {
+      const name = argv[0];
+      if (!name) throw new Error('usage: pw path <name>');
+      console.log(worktreePath(loadRepoConfig(), name));
+      break;
+    }
     case 'wt':
     case 'create':
       await commandCreate(argv);
