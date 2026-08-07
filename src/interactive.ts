@@ -251,6 +251,11 @@ function printStatus(config: RepoConfig) {
       `  spec   ${spec}`,
       `  dev    ${task.devRunning ? (task.devUrl ?? 'running') : 'stopped'}`,
       `  git    ${task.uncommitted} uncommitted, ${task.unmerged} unmerged`,
+      ...(task.pullRequest
+        ? [
+            `  pr     ${task.pullRequest.isDraft ? 'draft ' : ''}#${task.pullRequest.number}  ${task.pullRequest.url}`,
+          ]
+        : []),
     ].join('\n');
 
     if (task.needsYou) prompt.log.warn(body);

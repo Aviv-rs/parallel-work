@@ -27,8 +27,10 @@ ln -sf "$PWD/src/cli.ts" ~/.local/bin/pw
 
 - **bun**, on macOS or Linux. The entry point is TypeScript with a `bun` shebang.
 - **git**.
-- **tmux** and the **claude** CLI, for `pw agent` and the agent column of the status
-  board. Everything else works without them.
+- **tmux** and an agent CLI (**claude**, **codex** or **cursor-agent**), for `pw agent` and
+  the agent column of the status board. Everything else works without them.
+- **gh**, optional. When it is there and authenticated, each worktree with an open pull
+  request shows its number and link. Without it, that line is simply absent.
 - A dev command that picks its own free port. Two worktrees sharing one hardcoded port
   means the second silently serves the first one's app, which shows up as a 404 on a route
   that plainly exists.
@@ -70,10 +72,13 @@ checklist and ignoring the manual tests, which are yours to run.
 ### Interactive mode
 
 Bare `pw` opens a menu with a live status board above it, refreshed every few seconds
-while you sit there. The board carries a small pixel agent whose colour is the headline:
-red when something broke, yellow when an agent wants you, cyan while they work, blue when
-everything is stopped. Its caption names the actual condition, `dev stopped` or
-`needs review`, not a mood.
+while you sit there. Each worktree shows its agent, checklist progress, dev URL, git
+counts, and the link to its open pull request when there is one.
+
+Beside them sits a small pixel agent. Its colour is the headline: yellow when an agent
+wants you, cyan while they work, blue when everything is stopped, red only when a worktree
+folder has gone missing. Its caption is the work, `18/26 done`, `needs review`, `in
+review`, `all done`, never the plumbing.
 
 The menu is `Worktrees` (list, create, dev server, logs, open, remove), `Agents`, a
 command list, and settings. `Status of everything` only appears when the live board is

@@ -23,10 +23,18 @@ function task(patch: Partial<TaskStatus> = {}): TaskStatus {
     unmerged: 0,
     agent: { name: 'a', running: true, busy: true, lastLine: '' },
     spec: { file: '/tmp/plan.md', status: 'planned', done: 3, total: 10 },
+    pullRequest: null,
     needsYou: false,
     ...patch,
   };
 }
+
+const openPullRequest = {
+  number: 163,
+  url: 'https://github.com/org/repo/pull/163',
+  title: 'a thing',
+  isDraft: false,
+};
 
 const STRIP_ANSI = new RegExp(String.raw`\x1b\[[0-9;]*m`, 'g');
 const plain = (line: string) => line.replace(STRIP_ANSI, '');
@@ -48,8 +56,8 @@ describe('moodFor', () => {
     expect(moodFor([task(), task({ exists: false })])).toBe('alert');
   });
 
-  it('raises the alarm when a running agent lost its dev server', () => {
-    expect(moodFor([task({ devRunning: false })])).toBe('alert');
+  it('stays calm about a stopped dev server, which the row already shows', () => {
+    expect(moodFor([task({ devRunning: false })])).toBe('working');
   });
 
   it('puts the alarm ahead of waiting', () => {
@@ -68,33 +76,48 @@ describe('moodFor', () => {
 });
 
 describe('captionFor', () => {
-  it('names the broken thing rather than the mood', () => {
-    expect(captionFor([task({ exists: false })], 'alert')).toBe('folder gone');
-    expect(captionFor([task({ devRunning: false })], 'alert')).toBe(
-      'dev stopped',
-    );
+  it('reports how the work is going, not the plumbing', () => {
+    expect(captionFor([task({ spec: { file: 'p', status: null, done: 3, total: 10 } })], 'working')).toBe('3/10 done');
+    expect(captionFor([task(), task()], 'asleep')).toBe('6/20 done');
   });
 
-  it('says review when the waiting task is in review', () => {
-    const inReview = task({
-      needsYou: true,
-      spec: { file: 'p', status: 'in review', done: 5, total: 5 },
+  it('adds up progress across every plan', () => {
+    const tasks = [
+      task({ spec: { file: 'a', status: null, done: 2, total: 4 } }),
+      task({ spec: { file: 'b', status: null, done: 1, total: 6 } }),
+    ];
+    expect(captionFor(tasks, 'working')).toBe('3/10 done');
+  });
+
+  it('says in review once the work is finished and a PR is open', () => {
+    const finished = task({
+      spec: { file: 'p', status: null, done: 5, total: 5 },
+      pullRequest: openPullRequest,
     });
-    expect(captionFor([inReview], 'waiting')).toBe('needs review');
+    expect(captionFor([finished], 'asleep')).toBe('in review');
   });
 
-  it('falls back to needs you when no status says review', () => {
+  it('says all done when finished with no PR yet', () => {
+    const finished = task({ spec: { file: 'p', status: null, done: 5, total: 5 } });
+    expect(captionFor([finished], 'asleep')).toBe('all done');
+  });
+
+  it('says review when a waiting task already has a PR', () => {
+    const waiting = task({ needsYou: true, pullRequest: openPullRequest });
+    expect(captionFor([waiting], 'waiting')).toBe('needs review');
+  });
+
+  it('falls back to needs you when nothing points at review', () => {
     expect(captionFor([task({ needsYou: true })], 'waiting')).toBe('needs you');
   });
 
-  it('counts busy agents when there is more than one', () => {
-    expect(captionFor([task(), task()], 'working')).toBe('2 working');
-    expect(captionFor([task()], 'working')).toBe('working');
+  it('only shouts about a folder that is gone', () => {
+    expect(captionFor([task({ exists: false })], 'alert')).toBe('folder gone');
+    expect(moodFor([task({ devRunning: false })])).not.toBe('alert');
   });
 
-  it('flags parked work when nothing is running but changes exist', () => {
-    expect(captionFor([task({ uncommitted: 3 })], 'asleep')).toBe('work parked');
-    expect(captionFor([task({ uncommitted: 0 })], 'asleep')).toBe('all quiet');
+  it('handles worktrees with no plan at all', () => {
+    expect(captionFor([task({ spec: null })], 'asleep')).toBe('no plans');
   });
 });
 

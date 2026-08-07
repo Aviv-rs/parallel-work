@@ -1,4 +1,5 @@
 import type { TaskStatus } from './actions';
+import type { PullRequest } from './pull-request';
 
 export type Mood = 'alert' | 'waiting' | 'working' | 'asleep' | 'empty';
 
@@ -62,33 +63,42 @@ const SPRITES: Record<Mood, string[][]> = {
  */
 export function captionFor(tasks: TaskStatus[], mood: Mood): string {
   if (mood === 'empty') return 'nothing yet';
-
-  if (mood === 'alert') {
-    if (tasks.some((task) => !task.exists)) return 'folder gone';
-    return 'dev stopped';
-  }
+  if (mood === 'alert') return 'folder gone';
 
   if (mood === 'waiting') {
     const waiting = tasks.filter((task) => task.needsYou);
-    return waiting.some((task) => /review/i.test(task.spec?.status ?? ''))
-      ? 'needs review'
-      : 'needs you';
+    const inReview = waiting.some(
+      (task) => task.pullRequest || /review/i.test(task.spec?.status ?? ''),
+    );
+    return inReview ? 'needs review' : 'needs you';
   }
 
-  if (mood === 'working') {
-    const busy = tasks.filter((task) => task.agent.busy).length;
-    return busy > 1 ? `${busy} working` : 'working';
+  const { done, total } = totalProgress(tasks);
+  if (!total) return mood === 'working' ? 'working' : 'no plans';
+  if (done === total) {
+    return tasks.some((task) => task.pullRequest) ? 'in review' : 'all done';
   }
-
-  return tasks.some((task) => task.uncommitted > 0) ? 'work parked' : 'all quiet';
+  return `${done}/${total} done`;
 }
 
 /**
- * Something is broken rather than merely idle: the folder went missing under
- * the registry, or an agent is running against a dev server that has died.
+ * Reserved for a worktree that is gone from under the registry. A stopped dev
+ * server is on the row already and is not worth a red robot: the sprite is
+ * about how the work is going, not about the plumbing.
  */
 function needsAttention(task: TaskStatus) {
-  return !task.exists || (task.agent.running && !task.devRunning);
+  return !task.exists;
+}
+
+/** Checklist boxes across every plan, which is what "how is it going" means. */
+export function totalProgress(tasks: TaskStatus[]) {
+  return tasks.reduce(
+    (running, task) => ({
+      done: running.done + (task.spec?.done ?? 0),
+      total: running.total + (task.spec?.total ?? 0),
+    }),
+    { done: 0, total: 0 },
+  );
 }
 
 export function moodFor(tasks: TaskStatus[]): Mood {
@@ -133,6 +143,11 @@ function progressBar(done: number, total: number, width = 10) {
   );
 }
 
+export function pullRequestLabel(pullRequest: PullRequest) {
+  const tag = pullRequest.isDraft ? 'draft' : 'PR';
+  return `${paint(`${tag} #${pullRequest.number}`, 'magenta')} ${paint(pullRequest.url, 'dim')}`;
+}
+
 function devLabel(task: TaskStatus) {
   if (!task.devRunning) return paint('dev stopped', 'grey');
   return paint(task.devUrl ?? 'dev running', 'green');
@@ -172,6 +187,7 @@ export function statusBoard(
         `${bullet(task)} ${paint(task.name, 'bold')}`,
         `  ${agentLabel(task)}  ${specLabel(task)}`,
         `  ${devLabel(task)}  ${paint(`${task.uncommitted} uncommitted, ${task.unmerged} unmerged`, 'dim')}`,
+        ...(task.pullRequest ? [`  ${pullRequestLabel(task.pullRequest)}`] : []),
       ])
     : [paint('no worktrees yet, pick New worktree below', 'dim')];
 

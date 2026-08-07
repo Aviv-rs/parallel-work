@@ -12,6 +12,7 @@ import {
   stopDevServer,
   waitForDevUrl,
 } from './dev-server';
+import { findPullRequest, type PullRequest } from './pull-request';
 import { logPath } from './state';
 import { parseSlug, type BranchType } from './slug';
 import { run, tryRun } from './shell';
@@ -47,6 +48,7 @@ export interface WorktreeStatus extends WorktreeRecord {
 export interface TaskStatus extends WorktreeStatus {
   agent: AgentStatus;
   spec: SpecProgress | null;
+  pullRequest: PullRequest | null;
   needsYou: boolean;
 }
 
@@ -68,6 +70,9 @@ export function taskStatuses(config: RepoConfig): TaskStatus[] {
       ...worktree,
       agent,
       spec,
+      pullRequest: worktree.exists
+        ? findPullRequest(worktree.path, worktree.branch)
+        : null,
       needsYou: agent.running && !agent.busy,
     };
   });
