@@ -62,6 +62,10 @@ pw tile [name...]                     # one tmux pane per worktree, tiled, all s
 pw shell <name>                       # a shell in that worktree, exit to come back
 pw path <name>                        # cd "$(pw path <name>)"
 
+pw qa <name> [--agent] [--tell]       # check a worktree against its plan, two lanes
+pw design discover <node> --file <key># the whole Figma flow from one link
+pw design cache <name>                # pin every design node beside the plan
+
 pw status                             # agent, spec progress, dev URL and git state per task
 pw agent start <name>                 # a Claude session in its own tmux window
 pw agent send <name> "do the thing"   # type into it
@@ -99,6 +103,63 @@ of working three tickets in parallel. `pw shell <name>` drops you into one, and
 The setup wizard asks before wiring worktrees into a `.code-workspace`, and answering no
 leaves your editor out of it entirely. `pw agent tile` does the same trick for running
 agents, pulling their windows into panes of one window; `pw agent untile` splits them back.
+
+### QA
+
+`pw qa <name>` checks a finished worktree against its own plan.
+
+The **spec lane** always runs: the plan's checklist, the files actually changed against
+the base branch and in the working tree, and the repo's `test`, `typecheck` and `lint`
+scripts, found from `package.json` or named in `.parallel-work.json`.
+
+The **visual lane** runs when the plan has a `## Design` section pinning Figma nodes to
+routes. Each row is exported from Figma, screenshot from that worktree's own dev server at
+the matching route and state, and diffed. Findings land in `spec/<task>/qa-findings.md`.
+
+A bare `pw qa` stops there. Two flags interrupt somebody, so each is opt in:
+
+- `--agent` opens a reviewer in a `<name>-qa` window of the worker's own tmux session,
+  handed only the rows that failed and their three images. It launches with
+  `PW_EDIT_TOOLS=` empty, so it cannot edit the worktree it is judging: a reviewer that
+  can edit fixes what it finds instead of reporting it. A clean run starts nothing.
+- `--tell` sends the worker one line pointing at the findings file. Never the findings
+  themselves, and never without you asking, since the worker may be mid-edit.
+
+```markdown
+## Design
+
+Figma file: WdGzjurMa53pyVeu1cU5I9
+Mobile 390x844.
+
+| node | url | component | viewport | state |
+| --- | --- | --- | --- | --- |
+| 4263:32210 | /candidate/resume | CandidateResumeSection | mobile | default |
+| 2917:57231 | | MobileHeader | | reference |
+```
+
+A row's `state` is `default`, `hover:<selector>`, `focus:<selector>`, `setup:<module>` for
+a `playwright/qa-states/<module>.ts` helper that drives the page, or `reference`. Only a
+`FRAME` whose size is exactly the row's viewport is diffed; a variants board, a banner or a
+native OS overlay is `reference`, pinned to be consulted and never screenshot.
+
+Assets fail the run: an illustration in the repo that no longer matches a fresh export of
+its node, or a file that is not there at all. The layout pixel ratio is reported and exits
+0, because font smoothing, animation frames and real data all move it without anything
+being wrong.
+
+Rendering a Figma frame through the REST API gives you its status bar, its home indicator
+and any cursor the designer left on it, and there is no `contentsOnly` to ask for the
+content alone. So qa crops to the frame's own largest child, removes the status bar at its
+measured height when it can find one as a node, and masks whatever is left over. Cropping
+is only ever done to bounds Figma reports: a wrong crop shifts everything below it and
+reads as a total mismatch, a wrong mask only blinds one rectangle.
+
+It needs `FIGMA_API_KEY` in the environment and `playwright` installed in the worktree.
+
+`pw design discover <node-id> --file <key>` is the plan-time half: one pinned link gives
+you the section it lives in, every frame in its row, and the text of the banner labelling
+that row. `pw design cache <name>` renders each pinned node into `spec/<task>/assets/` to
+be committed with the plan, since the urls Figma hands back expire within the hour.
 
 ### Agents
 
@@ -161,6 +222,9 @@ leaves a gitlink that can be committed by accident.
   "copy": [".env", ".env.local", ".claude", "playwright/.auth"],
   "install": "bun install",
   "dev": "bun dev",
+  "test": "bun run test",
+  "typecheck": "bun run typecheck",
+  "lint": "bun run lint",
   "workspaceFile": "sweft.code-workspace"
 }
 ```

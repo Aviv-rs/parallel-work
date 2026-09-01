@@ -23,7 +23,11 @@ import {
   seeAgent,
   sendToAgent,
   startAgent,
+  startQaAgent,
 } from './agent';
+import { discoverFlow } from './figma';
+import { cacheReferenceImages, qaBrief, runQa } from './qa';
+import { findSpec, normaliseNodeId, parseDesign } from './spec';
 import { loadRepoConfig } from './config';
 import { runInteractive } from './interactive';
 import { BRANCH_TYPES, type BranchType } from './slug';
@@ -185,6 +189,132 @@ async function commandAgent(argv: string[]) {
   }
 }
 
+/**
+ * Bare `pw qa` runs the checks and writes the findings file, and that is all.
+ * Starting an agent and typing into a worker are both things that interrupt
+ * somebody, so each one is a flag the human turns on deliberately.
+ */
+async function commandQa(argv: string[]) {
+  const name = argv[0];
+  if (!name) {
+    throw new Error(
+      'usage: pw qa <name> [--spec-only] [--visual-only] [--agent] [--tell]',
+    );
+  }
+
+  const config = loadRepoConfig();
+  const lanes = flag(argv, 'spec-only')
+    ? 'spec'
+    : flag(argv, 'visual-only')
+      ? 'visual'
+      : 'both';
+
+  const result = await runQa({ config, name, lanes, report });
+
+  console.log('');
+  for (const failure of result.failures) console.log(`FAIL  ${failure}`);
+  for (const note of result.notes) console.log(`note  ${note}`);
+  if (result.findingsFile) console.log(`\nfindings   ${result.findingsFile}`);
+
+  const brief = qaBrief(result);
+  if (flag(argv, 'agent')) {
+    if (!brief) {
+      console.log('agent      nothing failed, so no reviewer was started');
+    } else {
+      const started = await startQaAgent(
+        config,
+        name,
+        option(argv, 'model'),
+        brief,
+      );
+      if (started.briefed) {
+        console.log(`agent      reviewing in ${started.session}:${started.window}`);
+      } else {
+        console.log(
+          `agent      started in ${started.session}:${started.window}, but it is ${started.state === 'blocked' ? 'sitting on a dialog' : 'not listening yet'}`,
+        );
+        console.log(`           clear it, then hand it ${started.briefFile}`);
+      }
+      console.log(`           tmux attach -t ${started.session}`);
+    }
+  }
+
+  // A one line pointer, never the findings themselves: a long multi-line paste
+  // into a TUI is how the prompt gets mangled. Resolved by window name only,
+  // because the reviewer runs in the same directory as the worker and a
+  // directory match would put the worker's message on the reviewer's screen.
+  if (flag(argv, 'tell')) {
+    if (!result.findingsFile) {
+      console.log('tell       nothing to point at, no findings file was written');
+    } else if (!runningAgents(config).includes(name)) {
+      console.log(`tell       no agent named '${name}' is running`);
+    } else {
+      await sendToAgent(config, name, `QA run finished, read ${result.findingsFile}`);
+      console.log(`tell       pointer sent to ${name}`);
+    }
+  }
+
+  if (result.failures.length) process.exit(1);
+}
+
+/**
+ * Plan-time helpers. Discovery turns the one link a ticket carries into the
+ * whole flow, and the cache pins what it found next to the plan.
+ */
+async function commandDesign(argv: string[]) {
+  const [subcommand, ...rest] = argv;
+  const config = loadRepoConfig();
+
+  if (subcommand === 'discover') {
+    const fileKey = option(argv, 'file');
+    const node = rest.find(
+      (part) => !part.startsWith('--') && part !== fileKey,
+    );
+    if (!node || !fileKey) {
+      throw new Error('usage: pw design discover <node-id> --file <figma-file-key>');
+    }
+
+    const flow = await discoverFlow(fileKey, normaliseNodeId(node));
+    console.log(`page       ${flow.page ?? '(none)'}`);
+    console.log(`section    ${flow.section?.name ?? '(none)'}`);
+    console.log(`banner     ${flow.banner?.text ?? '(none)'}`);
+    for (const member of flow.row) {
+      const { width, height } = member.box;
+      console.log(
+        `  ${member.id.padEnd(14)} ${member.type.padEnd(14)} ${Math.round(width)}x${Math.round(height)}  ${member.name}`,
+      );
+    }
+    return;
+  }
+
+  if (subcommand === 'cache') {
+    const name = rest.find((part) => !part.startsWith('--'));
+    if (!name) throw new Error('usage: pw design cache <name>');
+
+    const record = readState(config.name).worktrees[name];
+    const slug = name.replace(`${config.name}-`, '');
+    const planFile =
+      findSpec(record?.path ?? config.root, record?.taskId ?? null, slug) ??
+      findSpec(config.root, record?.taskId ?? null, slug);
+    if (!planFile) throw new Error(`no spec/<task>/plan.md for '${name}'`);
+
+    const manifest = parseDesign(await Bun.file(planFile).text());
+    if (!manifest?.fileKey) {
+      throw new Error(`${planFile} has no Design section with a Figma file key`);
+    }
+
+    const written = await cacheReferenceImages(
+      manifest.fileKey,
+      manifest.rows.map((row) => row.nodeId),
+      planFile,
+    );
+    for (const path of written) console.log(path);
+    return;
+  }
+
+  throw new Error('usage: pw design <discover|cache> ...');
+}
+
 function commandRemove(argv: string[]) {
   const name = argv[0];
   if (!name) throw new Error('usage: pw rm <name>');
@@ -285,6 +415,12 @@ try {
       break;
     case 'agent':
       await commandAgent(argv);
+      break;
+    case 'qa':
+      await commandQa(argv);
+      break;
+    case 'design':
+      await commandDesign(argv);
       break;
     case 'dev':
       await commandDev(argv);

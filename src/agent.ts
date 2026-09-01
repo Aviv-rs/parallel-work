@@ -10,9 +10,11 @@ import {
   killWindow,
   listWindows,
   resolveTarget,
+  parkPrompt,
   sendPrompt,
   startWindow,
   tmuxSessionName,
+  waitForPrompt,
 } from './tmux';
 
 const DEFAULT_MCP_SERVERS = [
@@ -41,6 +43,85 @@ function claudeCommand(model: string | null) {
   ]
     .filter(Boolean)
     .join(' ');
+}
+
+/**
+ * The reviewer reads and reports: the plan, the diff, the findings file and the
+ * images beside it. It launches with `PW_EDIT_TOOLS=` empty, so it cannot edit
+ * the worktree it is judging. A reviewer that can edit fixes what it finds
+ * instead of reporting it, and those files belong to the worker.
+ *
+ * Bash is on, because half of reviewing a branch is reading its diff.
+ */
+export function qaAgentCommand(model: string | null) {
+  const mcpServers = (process.env.PW_MCP ?? DEFAULT_MCP_SERVERS.join(' ')).trim();
+  const editTools = (process.env.PW_EDIT_TOOLS ?? '').trim();
+  return [
+    'claude',
+    model ? `--model ${model}` : '',
+    `--permission-mode ${process.env.PW_MODE ?? 'auto'}`,
+    `--allowedTools ${mcpServers} Bash Read Glob Grep ${editTools} Task Skill TodoWrite WebFetch WebSearch`.replace(
+      /\s+/g,
+      ' ',
+    ),
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
+ * Its own window in the worker's own session, so `Ctrl-b w` reaches both and
+ * the worker is never interrupted mid-task by its own review.
+ */
+export function qaWindowName(worktreeName: string) {
+  return `${worktreeName}-qa`;
+}
+
+/**
+ * Starts the reviewer and hands it its brief. The brief is multi-line, so
+ * sendPrompt parks it in `.pw-prompts/` and types one line pointing at it.
+ *
+ * Nothing is typed until the TUI is actually listening. A session launched in a
+ * directory the agent has not seen before opens a trust dialog first, and
+ * typing into that answers a question pw did not ask: the Enter that follows
+ * picks whatever is highlighted, which kills the session it just started.
+ */
+export async function startQaAgent(
+  config: RepoConfig,
+  worktreeName: string,
+  model: string | null,
+  brief: string,
+) {
+  const record = readState(config.name).worktrees[worktreeName];
+  if (!record) throw new Error(`no worktree '${worktreeName}'`);
+
+  const session = tmuxSessionName(config.name);
+  const window = qaWindowName(worktreeName);
+  const settings = readSettings();
+  const command =
+    settings.agentCli === 'claude' ? qaAgentCommand(model) : agentCommand(model);
+
+  startWindow(session, window, record.path, command);
+
+  const state = await waitForPrompt(session, window, record.path);
+  if (state !== 'ready') {
+    // The brief is still written, so the human can hand it over by hand once
+    // they have cleared whatever the window is sitting on.
+    return {
+      session,
+      window,
+      briefed: false,
+      state,
+      briefFile: parkPrompt(record.path, window, brief),
+    };
+  }
+
+  const sent = sendPrompt(session, window, brief, record.path);
+  if (sent) {
+    await Bun.sleep(400);
+    sent.submit();
+  }
+  return { session, window, briefed: Boolean(sent), state, briefFile: null };
 }
 
 /**

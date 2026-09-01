@@ -138,10 +138,22 @@ export function capturePane(
 }
 
 /**
+ * Parks a message in the worktree and returns its path. Inside the worktree
+ * because reading outside it re-triggers a permission dialog.
+ */
+export function parkPrompt(worktreePath: string, name: string, prompt: string) {
+  const promptDirectory = join(worktreePath, '.pw-prompts');
+  mkdirSync(promptDirectory, { recursive: true });
+  const promptFile = join(promptDirectory, `${name}-${Bun.nanoseconds()}.md`);
+  writeFileSync(promptFile, `${prompt}\n`);
+  prunePrompts(promptDirectory);
+  return promptFile;
+}
+
+/**
  * A newline inside send-keys submits the prompt, so a multi-line message would
- * fire as several half-prompts. Anything multi-line goes to a file inside the
- * worktree (reading outside it re-triggers a permission dialog) and the pane
- * gets one line pointing at it.
+ * fire as several half-prompts. Anything multi-line is parked in a file and the
+ * pane gets one line pointing at it.
  */
 export function sendPrompt(
   session: string,
@@ -152,18 +164,50 @@ export function sendPrompt(
   const target = resolveTarget(session, name, worktreePath);
   if (!target) return null;
 
-  let text = prompt;
-  if (prompt.includes('\n')) {
-    const promptDirectory = join(worktreePath, '.pw-prompts');
-    mkdirSync(promptDirectory, { recursive: true });
-    const promptFile = join(promptDirectory, `${name}-${Bun.nanoseconds()}.md`);
-    writeFileSync(promptFile, `${prompt}\n`);
-    prunePrompts(promptDirectory);
-    text = `Read ${promptFile} in full and do what it says.`;
-  }
+  const text = prompt.includes('\n')
+    ? `Read ${parkPrompt(worktreePath, name, prompt)} in full and do what it says.`
+    : prompt;
 
   run('tmux', ['send-keys', '-t', target, '-l', text]);
   return { target, submit: () => run('tmux', ['send-keys', '-t', target, 'Enter']) };
+}
+
+/** The TUI is listening: its input box and its shortcut hint are both up. */
+const PROMPT_READY = ['? for shortcuts', 'Bypassing Permissions'];
+
+/**
+ * A dialog, not a prompt. Typing here would answer a question pw did not ask,
+ * and the Enter that follows would pick whatever option is highlighted, which
+ * is how a freshly launched session gets dismissed before it starts.
+ */
+const PROMPT_BLOCKED = [
+  /do you trust/i,
+  /safety check/i,
+  /is this a project you/i,
+  /yes, proceed/i,
+];
+
+export type PromptState = 'ready' | 'blocked' | 'timeout';
+
+/**
+ * Waits for a freshly launched agent to be listening. A fixed sleep is not
+ * enough: a TUI that is slow, or parked on a trust dialog, silently eats both
+ * the message and the Enter.
+ */
+export async function waitForPrompt(
+  session: string,
+  name: string,
+  worktreePath: string,
+  timeoutMs = 30_000,
+): Promise<PromptState> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const screen = capturePane(session, name, 40, worktreePath) ?? '';
+    if (PROMPT_BLOCKED.some((marker) => marker.test(screen))) return 'blocked';
+    if (PROMPT_READY.some((marker) => screen.includes(marker))) return 'ready';
+    await Bun.sleep(500);
+  }
+  return 'timeout';
 }
 
 const TILE_WINDOW = 'tiles';
