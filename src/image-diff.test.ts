@@ -141,3 +141,31 @@ describe('cropImage', () => {
     expect(cropImage(solid(10, 10, [0, 0, 0]), box(5, 5, 99, 99)).width).toBe(5);
   });
 });
+
+/** Bars at fixed rows, the crude stand-in for a page of text and buttons. */
+function striped(width: number, height: number, offset: number) {
+  const image = solid(width, height, [255, 255, 255]);
+  for (let band = 0; band < 6; band += 1) {
+    const top = band * 60 + offset;
+    for (let y = top; y < top + 30 && y < height; y += 1) {
+      for (let x = 20; x < width - 20; x += 1) {
+        const at = (image.width * y + x) << 2;
+        image.data[at] = 20;
+        image.data[at + 1] = 20;
+        image.data[at + 2] = 20;
+      }
+    }
+  }
+  return image;
+}
+
+describe('the layout threshold', () => {
+  it('is not tripped by chrome removal on its own', () => {
+    expect(diffImages(striped(390, 400, 0), striped(390, 400, 0)).ratio).toBe(0);
+  });
+
+  it('is tripped by a real spacing error', () => {
+    const shifted = diffImages(striped(390, 400, 0), striped(390, 400, 8));
+    expect(shifted.ratio).toBeGreaterThan(0.02);
+  });
+});

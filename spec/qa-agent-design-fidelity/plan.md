@@ -1,6 +1,6 @@
 # QA agent for design fidelity
 
-Status: planned
+Status: in review
 Branch: feature/qa-agent-design-fidelity
 CLI: https://github.com/Aviv-rs/parallel-work
 
@@ -236,7 +236,7 @@ multi-line prompt problems start.
 - [x] ~~Lane selection and gate~~
 - [x] ~~pw qa in the CLI~~
 - [x] ~~QA agent session mode~~
-- [ ] Both skills updated
+- [x] ~~Both skills updated~~
 
 ## Manual tests
 
