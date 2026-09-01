@@ -42,8 +42,24 @@ export function hasFigmaKey() {
   return Boolean(process.env.FIGMA_API_KEY?.trim());
 }
 
+/**
+ * S3 drops a connection now and then, and a whole qa run is too much to lose to
+ * one closed socket. Retried on the transport error only; a 4xx from Figma is
+ * an answer, not a hiccup.
+ */
+async function fetchWithRetry(url: string, init?: RequestInit, attempts = 3) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      if (attempt >= attempts) throw error;
+      await Bun.sleep(attempt * 500);
+    }
+  }
+}
+
 async function figmaJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API}${path}`, {
+  const response = await fetchWithRetry(`${API}${path}`, {
     headers: { 'X-Figma-Token': figmaKey() },
   });
   if (!response.ok) {
@@ -106,7 +122,7 @@ export async function renderNodes(
   const rendered: Record<string, Buffer> = {};
   for (const [id, url] of Object.entries(body.images)) {
     if (!url) continue;
-    const image = await fetch(url);
+    const image = await fetchWithRetry(url);
     if (!image.ok) throw new Error(`figma render for ${id}: ${image.status}`);
     rendered[id] = Buffer.from(await image.arrayBuffer());
   }

@@ -158,7 +158,9 @@ export function changedFiles(worktreePath: string, baseBranch: string) {
     ['diff', '--name-only', `${baseBranch}...HEAD`],
     worktreePath,
   );
-  const working = tryRun('git', ['status', '--porcelain'], worktreePath);
+  // -uall, or a new directory collapses to one entry and the report says
+  // "src/" where the agent added nine files.
+  const working = tryRun('git', ['status', '--porcelain', '-uall'], worktreePath);
 
   const files = new Set<string>();
   for (const line of committed.stdout.split('\n')) {
@@ -229,7 +231,7 @@ async function checkAssets(
       results.push({
         ...asset,
         ok: false,
-        message: `file is not in the worktree: ${asset.file}`,
+        message: 'file is not in the worktree',
       });
       continue;
     }
@@ -468,7 +470,7 @@ async function visualLane(
 
   qaReport.assets = await checkAssets(fileKey, manifest, worktreePath);
   for (const asset of qaReport.assets) {
-    if (!asset.ok) qaReport.failures.push(asset.message);
+    if (!asset.ok) qaReport.failures.push(`${asset.file}: ${asset.message}`);
   }
 
   for (const row of qaReport.rows) {
