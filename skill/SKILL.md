@@ -208,6 +208,26 @@ the durable artifact rather than the work. Say so in the prompt when you do.
 Uncommitted also keeps `pw status` honest: uncommitted count is what it reports, and work
 buried in commits reads as a clean tree.
 
+### Never read the input box, never append to it
+
+`pw agent send` clears the box before it types. Do not work around that, and never inspect
+the box to decide what to send.
+
+The CLI fills the input with a suggested next message. In a `capture-pane` that ghost text
+is byte for byte identical to something the human typed, so "there is text here, I will
+append rather than clobber it" is not a safe move: it is a coin flip on whether the agent
+receives an instruction nobody gave. It has already gone wrong. A suggestion reading
+`commit all of it` was treated as the human's, got appended to, and the agent committed a
+working tree that was still being reviewed. Three earlier sends carried the same kind of
+phantom prefix.
+
+Every prompt goes out standalone and self contained. If the human was mid sentence, they
+lose a line they can see is gone and retype it. That is strictly cheaper than an invisible
+instruction that already ran.
+
+The same applies to reading a pane for any decision, not just sending. `pw agent see` shows
+you what the agent said. It does not show you what the human intends.
+
 **Do not write kickoff or hand-off notes into the worktree yourself.** They land in the
 human's git status, in their editor's source control panel, and eventually in a pull
 request. `pw agent send` already handles a multi-line prompt: it parks the text in

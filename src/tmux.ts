@@ -168,8 +168,27 @@ export function sendPrompt(
     ? `Read ${parkPrompt(worktreePath, name, prompt)} in full and do what it says.`
     : prompt;
 
+  clearInputLine(target);
   run('tmux', ['send-keys', '-t', target, '-l', text]);
   return { target, submit: () => run('tmux', ['send-keys', '-t', target, 'Enter']) };
+}
+
+/**
+ * Whatever is sitting in the input box is discarded before anything is typed.
+ *
+ * The CLI autocompletes the box with a suggested next message, and a pane
+ * capture cannot tell that ghost text apart from something the human typed.
+ * Appending to it once turned a suggestion reading "commit all of it" into a
+ * real instruction, and the agent committed a working tree the human was still
+ * reviewing. Escape drops the suggestion, Ctrl-U clears any real text, and the
+ * prompt that follows is the only thing the agent sees.
+ *
+ * Losing a half typed human line is the cheaper mistake. It is visible, and the
+ * human can retype it. A phantom instruction is invisible and already executed.
+ */
+function clearInputLine(target: string) {
+  run('tmux', ['send-keys', '-t', target, 'Escape']);
+  run('tmux', ['send-keys', '-t', target, 'C-u']);
 }
 
 /** The TUI is listening: its input box and its shortcut hint are both up. */
