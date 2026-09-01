@@ -23,6 +23,11 @@ pw agent start <name>                 # an agent session in its own tmux window
 pw agent send  <name> "do the thing"  # type into it
 pw agent see   <name> [--lines 60]    # what is on its screen right now
 pw agent list / pw agent kill <name>
+
+pw qa <name> [--spec-only] [--visual-only]   # check a worktree against its plan
+pw agent qa <name>                           # a read-only reviewer in its own window
+pw design discover <node-id> --file <key>    # the whole flow from one Figma link
+pw design cache <name>                       # pin every design node beside the plan
 ```
 
 ## Why separate sessions, not subagents
@@ -105,7 +110,9 @@ on its first file. Hours of context, zero lines written. Never "fix" a blocked c
 telling it to write via a bash heredoc. That is exactly the workaround the escalation
 clause forbids.
 
-- Read-only session (audit, review, QA, research)? `PW_EDIT_TOOLS= pw agent start <name>`.
+- Read-only session (audit, review, research)? `PW_EDIT_TOOLS= pw agent start <name>`.
+  For QA specifically, `pw agent qa <name>` already does it: no file writing tools at all,
+  Bash on, in its own `<name>-qa` window so the worker's session is not interrupted.
 - **`Bash` is not granted.** A child cannot run its own tests, typecheck or lint, and will
   say so at the end of its run. Run them yourself in its worktree and send it the results.
 - `mcp__*` is **not** a working pattern. It grants nothing, silently, and each MCP tool
@@ -183,12 +190,77 @@ submits, so a multi-line message would otherwise fire as several half-prompts.
 
 The plan file is the durable artifact. Everything else is a prompt.
 
+## Design fidelity: `pw qa`
+
+`pw qa <name>` checks a finished worktree against its own plan. Two lanes and one gate.
+
+**Spec lane**, always: the plan's checklist, the files actually changed against the base
+branch and in the working tree, and the repo's test, typecheck and lint scripts. A task
+with no `## Design` section stops there and never calls Figma.
+
+**Visual lane**, only when the plan pins a design. Every manifest row is exported from
+Figma, screenshot from the worktree's own dev server at the matching route and state, and
+diffed. qa starts the dev server itself if it is not up.
+
+### What the manifest looks like
+
+```markdown
+## Design
+
+Figma file: WdGzjurMa53pyVeu1cU5I9
+Mobile 390x844.
+
+| node | url | component | viewport | state |
+| --- | --- | --- | --- | --- |
+| 4263:32210 | /candidate/resume | CandidateResumeSection | mobile | default |
+| 4263:33001 | /candidate/resume | CandidateResumeSection | mobile | setup:resume-filled |
+| 2917:57231 | | MobileHeader | | reference |
+
+### Assets
+
+| node | file |
+| --- | --- |
+| 4263:32215 | src/assets/images/resume-empty-state-illustration.png |
+```
+
+`state` is `default`, `hover:<selector>`, `focus:<selector>`, `setup:<module>` for a
+`playwright/qa-states/<module>.ts` helper that drives the page, or `reference`. A setup
+module that throws fails the row: shooting the default state instead would compare the
+wrong screen against the design and pass. Arbitrary page driving belongs in reviewable
+repo code, not in a table cell.
+
+`reference` rows are pinned so the worker must consult them, and their assets are still
+verified. They are never screenshot. Only a `FRAME` whose size is exactly the row's
+viewport is diffable, decided by Figma's own node type: a `COMPONENT_SET` is a variants
+board with no url, a wide short frame is a banner, and a native file picker is something a
+browser cannot draw. A diffable row pointing at any of those is refused with that message
+rather than producing a diff nobody trusts.
+
+### The gate
+
+- **Fails the run**: an asset that no longer matches a fresh export of its node, an asset
+  file that is not on disk, an asset row with no node id, a node that cannot be fetched, a
+  refused row, a state that could not be reached.
+- **Reported, exits 0**: the layout pixel ratio. Font smoothing, animation frames and real
+  data all move that number without anything being wrong. Design drift, a fresh render
+  against the copy cached beside the plan, is reported the same way: it means the design
+  moved after the plan was written.
+
+Findings go to `spec/<task>/qa-findings.md`, newest run replacing the last, and the worker
+gets a one line pointer at the path. Never paste findings into a session: a long multi-line
+paste into a TUI is how the prompt gets mangled. The design, app and diff images live under
+`~/.parallel-work/qa/`, out of the human's git status.
+
+`pw qa` needs `FIGMA_API_KEY` for the visual lane. It is exported from `.zshrc`, so it
+reaches interactive shells only; qa says what is missing rather than skipping the lane.
+
 ## Before handing work back: the converge pass
 
 Tell each session to finish with this, and do it yourself when you are the one working:
 
-1. `test`, `typecheck`, `lint`. All green, or say what is not. The child cannot run these,
-   so run them in its worktree and send the output back.
+1. `pw qa <name>`, which runs `test`, `typecheck` and `lint` in that worktree and checks
+   the design manifest at the same time. Send the child the findings path, not the
+   findings. All green, or say what is not.
 2. Re-read its own `plan.md` and report three lists:
    - **Done**, ticked and true.
    - **Partial**, started and not finished, with what is missing.
