@@ -89,28 +89,46 @@ transcripts live outside tmux, and a Claude session comes back with
 
 ## Permissions
 
-Children launch with `--permission-mode dontAsk`. A child has nobody at its keyboard, so a
-permission dialog is a deadlock, not a safeguard.
+Children launch with `--permission-mode auto`. A child has nobody at its keyboard, so a
+permission dialog is a deadlock, not a safeguard. Override per launch with `PW_MODE`.
 
-### `dontAsk` denies the file-writing tools too
+### The file-writing tools are granted explicitly, and must stay that way
 
-This is the failure that bites hardest, because everything before it looks healthy.
-`dontAsk` is not "prompt-free yes", it is **deny everything not on `--allowedTools`**.
-`Write` / `Edit` / `MultiEdit` / `NotebookEdit` are not on that list by default, so a child
-sent to implement a ticket reads the whole codebase, writes a plan, then gets
+`pw` puts `Write` / `Edit` / `MultiEdit` / `NotebookEdit` on `--allowedTools` at launch.
+Leave them there. Under a stricter mode set through `PW_MODE` (`dontAsk`), anything not on
+that list is denied outright, and a child sent to implement a ticket reads the whole
+codebase, writes a plan, then gets
 
 > `Permission to use Write has been denied because Claude Code is running in don't ask mode.`
 
-on its first file. Hours of context, zero lines written. `pw` grants them at launch. Do not
-remove them, and do not "fix" a blocked child by telling it to write via a bash heredoc.
-That is exactly the workaround the escalation clause forbids.
+on its first file. Hours of context, zero lines written. Never "fix" a blocked child by
+telling it to write via a bash heredoc. That is exactly the workaround the escalation
+clause forbids.
 
-- Read-only session (audit, review, research)? `PW_EDIT_TOOLS= pw agent start <name>`.
+- Read-only session (audit, review, QA, research)? `PW_EDIT_TOOLS= pw agent start <name>`.
 - **`Bash` is not granted.** A child cannot run its own tests, typecheck or lint, and will
   say so at the end of its run. Run them yourself in its worktree and send it the results.
 - `mcp__*` is **not** a working pattern. It grants nothing, silently, and each MCP tool
   then prompts individually. Grant at the **server** level, e.g.
   `mcp__plugin_atlassian_atlassian`. Override with `PW_MCP="mcp__server_a mcp__server_b"`.
+
+### Migrations
+
+Children may write inside `drizzle/`, because denying it caused more hand-fixing than it
+prevented. The rule that replaces the deny goes in every kickoff prompt for a task that
+touches the schema:
+
+> Generate migrations with `bun db:generate --name=<descriptive_name>`. Never hand-write a
+> file in `drizzle/`. You may edit what it generated (a `USING` clause, a backfill, seed
+> data) and you may add seeds. Never run `db:migrate:*` or `db:push:*`.
+
+A hand-written `.sql` is detectable: `drizzle/meta/_journal.json` is maintained by
+drizzle-kit, so a migration file with no matching journal entry was not generated. Check it
+before trusting a schema change.
+
+Applying migrations is already impossible for children: `bun db:migrate:*`, `bun db:push:*`
+and `drizzle-kit push:*` are on the user-level `permissions.deny`, which is checked before
+any allow and survives every permission mode.
 
 ### Escalation is the safety story
 
@@ -134,10 +152,10 @@ A useful `permissions.deny` encodes the project's hardest rules:
 
 ```json
 "deny": ["Bash(rm:*)", "Bash(git push:*)", "Bash(git reset:*)", "Bash(git clean:*)",
-         "Bash(db:push:*)", "Write(drizzle/**)", "Edit(drizzle/**)"]
+         "Bash(bun db:push:*)", "Bash(bun db:migrate:*)", "Bash(drizzle-kit push:*)"]
 ```
 
-Deny is checked before allow, so it survives `dontAsk`. It is pattern matching on command
+Deny is checked before allow, so it survives every permission mode. It is pattern matching on command
 strings, not a sandbox: it catches `rm -rf x`, not `sh -c 'rm -rf x'`. Real blast-radius
 control is worktree isolation plus no push rights.
 

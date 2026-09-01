@@ -21,17 +21,17 @@ const DEFAULT_MCP_SERVERS = [
 ];
 
 /**
- * dontAsk denies every tool that is not on --allowedTools, the file writing
- * ones included, so a session sent to implement a ticket is declined on its
- * first Write and stops. A tmux session has nobody at its keyboard, so a
- * prompt would park forever, which is why the answer is grants rather than a
- * softer mode.
+ * A tmux session has nobody at its keyboard, so any prompt parks forever. auto
+ * keeps a session moving on its own; the file writing tools stay on
+ * --allowedTools so a stricter mode set through PW_MODE still gets them.
+ * Destructive commands are held back by the deny list in settings, which is
+ * checked before any allow and survives every mode.
  */
 function claudeCommand(model: string | null) {
   const mcpServers = (process.env.PW_MCP ?? DEFAULT_MCP_SERVERS.join(' ')).trim();
   const editTools =
     process.env.PW_EDIT_TOOLS ?? 'Write Edit MultiEdit NotebookEdit';
-  const permissionMode = process.env.PW_MODE ?? 'dontAsk';
+  const permissionMode = process.env.PW_MODE ?? 'auto';
 
   return [
     'claude',

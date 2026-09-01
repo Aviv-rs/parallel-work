@@ -11,10 +11,10 @@ const settings = (patch: Partial<Settings> = {}): Settings => ({
 });
 
 describe('agentCommand', () => {
-  it('grants claude the file writing tools, which dontAsk would otherwise deny', () => {
+  it('launches claude in auto mode with the file writing tools granted', () => {
     const command = agentCommand(null, settings());
     expect(command).toStartWith('claude ');
-    expect(command).toContain('--permission-mode dontAsk');
+    expect(command).toContain('--permission-mode auto');
     expect(command).toContain('Write Edit MultiEdit NotebookEdit');
   });
 
