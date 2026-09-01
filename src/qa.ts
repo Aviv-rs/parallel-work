@@ -482,6 +482,87 @@ async function visualLane(
   }
 }
 
+/**
+ * The rows a reviewer has something to do about: refused, errored, over the
+ * layout threshold, a different size, or drifted from the cached copy. A row
+ * that matched its design is not worth an agent's context.
+ */
+export function rowsNeedingReview(report: QaReport) {
+  return report.rows.filter(
+    (row) =>
+      row.status === 'refused' ||
+      row.status === 'error' ||
+      Boolean(row.sizeMismatch) ||
+      (row.ratio !== null && row.ratio > LAYOUT_THRESHOLD) ||
+      (row.driftRatio !== null && row.driftRatio > DRIFT_THRESHOLD),
+  );
+}
+
+/**
+ * What the reviewer is handed. Only the failing rows, with their three images:
+ * a passing row would cost it context and tempt it to find something.
+ *
+ * Null when there is nothing to review, which is what keeps a clean run from
+ * launching an agent at all.
+ */
+export function qaBrief(report: QaReport): string | null {
+  const rows = rowsNeedingReview(report);
+  const otherFailures = report.failures.filter(
+    (failure) => !rows.some((row) => failure.startsWith(row.nodeId)),
+  );
+  if (!rows.length && !otherFailures.length) return null;
+
+  const lines = [
+    `You are reviewing ${report.task} against its design. Report what is wrong,`,
+    'do not fix it: the worker owns these files and you have no edit tools.',
+    '',
+    `Worktree: ${report.worktree}`,
+    `Plan: ${report.planFile ?? '(none)'}`,
+    `Full findings: ${report.findingsFile ?? '(none)'}`,
+    '',
+  ];
+
+  if (rows.length) {
+    lines.push(`## ${rows.length} row(s) to look at`, '');
+    for (const row of rows) {
+      lines.push(`### ${row.nodeId} ${row.url ?? ''} (${row.state})`.trimEnd());
+      lines.push('');
+      if (row.component) lines.push(`- component: ${row.component}`);
+      lines.push(`- status: ${row.status}`);
+      if (row.ratio !== null) {
+        lines.push(`- pixels differing: ${(row.ratio * 100).toFixed(2)}%`);
+      }
+      if (row.sizeMismatch) lines.push(`- size: ${row.sizeMismatch}`);
+      if (row.message) lines.push(`- ${row.message}`);
+      if (row.driftRatio !== null && row.driftRatio > DRIFT_THRESHOLD) {
+        lines.push(
+          `- the design itself moved since the plan was written (${(row.driftRatio * 100).toFixed(1)}% against the cached copy). Check that before blaming the code.`,
+        );
+      }
+      if (row.images) {
+        lines.push(`- read the design: ${row.images.design}`);
+        lines.push(`- read the app: ${row.images.app}`);
+        lines.push(`- read the diff: ${row.images.diff}`);
+      }
+      lines.push('');
+    }
+  }
+
+  if (otherFailures.length) {
+    lines.push('## Also failing', '');
+    for (const failure of otherFailures) lines.push(`- ${failure}`);
+    lines.push('');
+  }
+
+  lines.push(
+    'Read both images for each row before saying anything about it. Font',
+    'smoothing and real data move the pixel number on their own, so say which',
+    'differences are real and which are noise. Finish with a short list the',
+    'worker can act on, worst first.',
+  );
+  return `${lines.join('\n')}\n`;
+}
+
 export function renderFindings(report: QaReport) {
   const lines: string[] = [
     `# QA findings: ${report.task}`,

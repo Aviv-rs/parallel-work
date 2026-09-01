@@ -62,7 +62,7 @@ pw tile [name...]                     # one tmux pane per worktree, tiled, all s
 pw shell <name>                       # a shell in that worktree, exit to come back
 pw path <name>                        # cd "$(pw path <name>)"
 
-pw qa <name>                          # check a worktree against its plan, two lanes
+pw qa <name> [--agent] [--tell]       # check a worktree against its plan, two lanes
 pw design discover <node> --file <key># the whole Figma flow from one link
 pw design cache <name>                # pin every design node beside the plan
 
@@ -114,8 +114,16 @@ scripts, found from `package.json` or named in `.parallel-work.json`.
 
 The **visual lane** runs when the plan has a `## Design` section pinning Figma nodes to
 routes. Each row is exported from Figma, screenshot from that worktree's own dev server at
-the matching route and state, and diffed. Findings land in `spec/<task>/qa-findings.md`
-and the agent gets a one line pointer at the path.
+the matching route and state, and diffed. Findings land in `spec/<task>/qa-findings.md`.
+
+A bare `pw qa` stops there. Two flags interrupt somebody, so each is opt in:
+
+- `--agent` opens a reviewer in a `<name>-qa` window of the worker's own tmux session,
+  handed only the rows that failed and their three images. It launches with
+  `PW_EDIT_TOOLS=` empty, so it cannot edit the worktree it is judging: a reviewer that
+  can edit fixes what it finds instead of reporting it. A clean run starts nothing.
+- `--tell` sends the worker one line pointing at the findings file. Never the findings
+  themselves, and never without you asking, since the worker may be mid-edit.
 
 ```markdown
 ## Design
@@ -147,8 +155,6 @@ is only ever done to bounds Figma reports: a wrong crop shifts everything below 
 reads as a total mismatch, a wrong mask only blinds one rectangle.
 
 It needs `FIGMA_API_KEY` in the environment and `playwright` installed in the worktree.
-`pw agent qa <name>` opens a reviewer session with no file writing tools, in its own
-window.
 
 `pw design discover <node-id> --file <key>` is the plan-time half: one pinned link gives
 you the section it lives in, every frame in its row, and the text of the banner labelling

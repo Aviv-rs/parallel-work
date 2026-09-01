@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'bun:test';
 
 import type { FigmaNode } from './figma';
-import { assetScale, classifyRow, renderFindings, type QaReport } from './qa';
+import {
+  assetScale,
+  classifyRow,
+  qaBrief,
+  renderFindings,
+  rowsNeedingReview,
+  type QaReport,
+} from './qa';
 import { parseDesign, viewportFor } from './spec';
 
 const MANIFEST = parseDesign(`## Design
@@ -130,5 +137,64 @@ describe('renderFindings', () => {
 
   it('says the gate passed when nothing failed', () => {
     expect(renderFindings({ ...REPORT, failures: [] })).toContain('Gate: passed');
+  });
+});
+
+const CLEAN: QaReport = {
+  ...REPORT,
+  rows: [{ ...REPORT.rows[0]!, ratio: 0.004, driftRatio: 0 }],
+  assets: [{ file: 'src/assets/x.png', nodeId: '1:2', ok: true, message: 'matches' }],
+  failures: [],
+  notes: [],
+};
+
+describe('rowsNeedingReview', () => {
+  it('leaves out a row that matched its design', () => {
+    expect(rowsNeedingReview(CLEAN)).toEqual([]);
+  });
+
+  it('picks up a row over the layout threshold', () => {
+    expect(rowsNeedingReview(REPORT)).toHaveLength(1);
+  });
+
+  it('picks up a refused row, which has no ratio at all', () => {
+    const refused: QaReport = {
+      ...CLEAN,
+      rows: [{ ...CLEAN.rows[0]!, status: 'refused', ratio: null, message: 'is a COMPONENT_SET' }],
+    };
+    expect(rowsNeedingReview(refused)).toHaveLength(1);
+  });
+
+  it('picks up a row whose design moved since the plan', () => {
+    const drifted: QaReport = {
+      ...CLEAN,
+      rows: [{ ...CLEAN.rows[0]!, driftRatio: 0.4 }],
+    };
+    expect(rowsNeedingReview(drifted)).toHaveLength(1);
+  });
+});
+
+describe('qaBrief', () => {
+  it('is null on a clean run, which is what stops an agent being launched', () => {
+    expect(qaBrief(CLEAN)).toBeNull();
+  });
+
+  it('hands over the failing row with all three of its images', () => {
+    const brief = qaBrief(REPORT)!;
+    expect(brief).toContain('4263:32210');
+    expect(brief).toContain('read the diff: /c.png');
+  });
+
+  it('tells the reviewer it cannot fix what it finds', () => {
+    expect(qaBrief(REPORT)!).toContain('do not fix it');
+  });
+
+  it('carries failures that are not rows, like a bad asset', () => {
+    expect(qaBrief(REPORT)!).toContain('src/assets/x.png does not match');
+  });
+
+  it('is not null when only a non-row check failed', () => {
+    const assetOnly: QaReport = { ...CLEAN, failures: ['tests failed: bun test'] };
+    expect(qaBrief(assetOnly)).toContain('tests failed');
   });
 });

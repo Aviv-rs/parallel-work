@@ -23,9 +23,10 @@ import {
   seeAgent,
   sendToAgent,
   startAgent,
+  startQaAgent,
 } from './agent';
 import { discoverFlow } from './figma';
-import { cacheReferenceImages, runQa } from './qa';
+import { cacheReferenceImages, qaBrief, runQa } from './qa';
 import { findSpec, normaliseNodeId, parseDesign } from './spec';
 import { loadRepoConfig } from './config';
 import { runInteractive } from './interactive';
@@ -154,15 +155,13 @@ async function commandAgent(argv: string[]) {
     return;
   }
   if (!name) {
-    throw new Error('usage: pw agent <start|qa|send|see|kill|list> <name>');
+    throw new Error('usage: pw agent <start|send|see|kill|list> <name>');
   }
 
   switch (subcommand) {
-    case 'qa':
     case 'start': {
-      const qa = subcommand === 'qa';
-      const started = startAgent(config, name, option(argv, 'model'), { qa });
-      console.log(`started ${qa ? `${name}-qa` : name} in ${started.session}`);
+      const started = startAgent(config, name, option(argv, 'model'));
+      console.log(`started ${name} in ${started.session}`);
       console.log(started.attachWith);
       break;
     }
@@ -185,14 +184,23 @@ async function commandAgent(argv: string[]) {
       break;
     default:
       throw new Error(
-        'usage: pw agent <start|qa|send|see|kill|list|tile|untile> <name>',
+        'usage: pw agent <start|send|see|kill|list|tile|untile> <name>',
       );
   }
 }
 
+/**
+ * Bare `pw qa` runs the checks and writes the findings file, and that is all.
+ * Starting an agent and typing into a worker are both things that interrupt
+ * somebody, so each one is a flag the human turns on deliberately.
+ */
 async function commandQa(argv: string[]) {
   const name = argv[0];
-  if (!name) throw new Error('usage: pw qa <name> [--spec-only] [--visual-only]');
+  if (!name) {
+    throw new Error(
+      'usage: pw qa <name> [--spec-only] [--visual-only] [--agent] [--tell]',
+    );
+  }
 
   const config = loadRepoConfig();
   const lanes = flag(argv, 'spec-only')
@@ -208,14 +216,41 @@ async function commandQa(argv: string[]) {
   for (const note of result.notes) console.log(`note  ${note}`);
   if (result.findingsFile) console.log(`\nfindings   ${result.findingsFile}`);
 
+  const brief = qaBrief(result);
+  if (flag(argv, 'agent')) {
+    if (!brief) {
+      console.log('agent      nothing failed, so no reviewer was started');
+    } else {
+      const started = await startQaAgent(
+        config,
+        name,
+        option(argv, 'model'),
+        brief,
+      );
+      if (started.briefed) {
+        console.log(`agent      reviewing in ${started.session}:${started.window}`);
+      } else {
+        console.log(
+          `agent      started in ${started.session}:${started.window}, but it is ${started.state === 'blocked' ? 'sitting on a dialog' : 'not listening yet'}`,
+        );
+        console.log(`           clear it, then hand it ${started.briefFile}`);
+      }
+      console.log(`           tmux attach -t ${started.session}`);
+    }
+  }
+
   // A one line pointer, never the findings themselves: a long multi-line paste
-  // into a TUI is how the prompt gets mangled.
-  if (result.findingsFile && !flag(argv, 'no-send')) {
-    try {
+  // into a TUI is how the prompt gets mangled. Resolved by window name only,
+  // because the reviewer runs in the same directory as the worker and a
+  // directory match would put the worker's message on the reviewer's screen.
+  if (flag(argv, 'tell')) {
+    if (!result.findingsFile) {
+      console.log('tell       nothing to point at, no findings file was written');
+    } else if (!runningAgents(config).includes(name)) {
+      console.log(`tell       no agent named '${name}' is running`);
+    } else {
       await sendToAgent(config, name, `QA run finished, read ${result.findingsFile}`);
-      console.log(`pointer    sent to the ${name} agent`);
-    } catch {
-      // No agent in that window is normal: pw qa is also run by hand.
+      console.log(`tell       pointer sent to ${name}`);
     }
   }
 

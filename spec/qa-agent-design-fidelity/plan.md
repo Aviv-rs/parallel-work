@@ -216,11 +216,19 @@ multi-line prompt problems start.
 4. `src/image-diff.ts` new. Content crop, measured status bar removal, sibling masks, then
    a pixel ratio. No model. Never crop to a constant.
 5. `src/qa.ts` new. Lane selection, node type validation, the gate, and the findings file.
-6. `src/cli.ts` add `pw qa <name> [--visual-only] [--spec-only]`.
-7. `src/agent.ts` allow a QA session: read-only edits off, Bash on, own tmux window.
-8. `skill/SKILL.md` document the manifest, the two lanes, the gate, and `pw qa`.
-9. `~/.claude/skills/concise-plan/SKILL.md` require the `## Design` section for any task
-   with a Figma link, and require a node id on every asset row.
+6. `src/cli.ts` add `pw qa <name> [--visual-only] [--spec-only] [--agent] [--tell]`.
+   Bare `pw qa <name>` runs the checks and writes the findings file. Nothing else.
+7. `src/agent.ts` add a QA session, launched by `pw qa <name> --agent`. It runs read-only
+   (`PW_EDIT_TOOLS=` so it cannot edit the worktree it is judging) with Bash on, in its own
+   tmux window named `<name>-qa` in the same session as the worker, so `Ctrl-b w` reaches
+   both. Only the rows that failed are handed to it; a clean run never launches one.
+8. `pw qa <name> --tell` sends the worker a one line pointer at the findings file, reusing
+   `sendToAgent`. Kept a separate flag so a findings file is never pushed into a worker
+   mid-edit without the human choosing to.
+9. `skill/SKILL.md` document the manifest, the two lanes, the gate, and the three ways to
+   run qa.
+10. `~/.claude/skills/concise-plan/SKILL.md` require the `## Design` section for any task
+    with a Figma link, and require a node id on every asset row.
 
 ## Checklist
 
@@ -234,8 +242,10 @@ multi-line prompt problems start.
 - [x] ~~Playwright capture per row~~
 - [x] ~~Content crop, measured status bar removal, sibling masks, diff~~
 - [x] ~~Lane selection and gate~~
-- [x] ~~pw qa in the CLI~~
-- [x] ~~QA agent session mode~~
+- [x] ~~pw qa in the CLI, checks only by default~~
+- [x] ~~pw qa --agent launches a read-only QA session in the worker's tmux session~~
+- [x] ~~pw qa --tell sends the worker the findings pointer~~
+- [x] ~~A clean run launches no agent and sends nothing~~
 - [x] ~~Both skills updated~~
 
 ## Manual tests

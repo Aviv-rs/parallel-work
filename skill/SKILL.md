@@ -25,7 +25,8 @@ pw agent see   <name> [--lines 60]    # what is on its screen right now
 pw agent list / pw agent kill <name>
 
 pw qa <name> [--spec-only] [--visual-only]   # check a worktree against its plan
-pw agent qa <name>                           # a read-only reviewer in its own window
+pw qa <name> --agent                         # ... and hand the failures to a reviewer
+pw qa <name> --tell                          # ... and point the worker at the findings
 pw design discover <node-id> --file <key>    # the whole flow from one Figma link
 pw design cache <name>                       # pin every design node beside the plan
 ```
@@ -111,8 +112,8 @@ telling it to write via a bash heredoc. That is exactly the workaround the escal
 clause forbids.
 
 - Read-only session (audit, review, research)? `PW_EDIT_TOOLS= pw agent start <name>`.
-  For QA specifically, `pw agent qa <name>` already does it: no file writing tools at all,
-  Bash on, in its own `<name>-qa` window so the worker's session is not interrupted.
+  For QA specifically, `pw qa <name> --agent` already does it: launched with
+  `PW_EDIT_TOOLS=` empty, Bash on, in its own `<name>-qa` window of the same session.
 - **`Bash` is not granted.** A child cannot run its own tests, typecheck or lint, and will
   say so at the end of its run. Run them yourself in its worktree and send it the results.
 - `mcp__*` is **not** a working pattern. It grants nothing, silently, and each MCP tool
@@ -246,10 +247,26 @@ rather than producing a diff nobody trusts.
   against the copy cached beside the plan, is reported the same way: it means the design
   moved after the plan was written.
 
-Findings go to `spec/<task>/qa-findings.md`, newest run replacing the last, and the worker
-gets a one line pointer at the path. Never paste findings into a session: a long multi-line
-paste into a TUI is how the prompt gets mangled. The design, app and diff images live under
-`~/.parallel-work/qa/`, out of the human's git status.
+### Three ways to run it
+
+Findings go to `spec/<task>/qa-findings.md`, newest run replacing the last. The design, app
+and diff images live under `~/.parallel-work/qa/`, out of the human's git status.
+
+| Command | Does |
+| --- | --- |
+| `pw qa <name>` | runs the checks, writes the findings file, stops |
+| `pw qa <name> --agent` | plus a reviewer in a `<name>-qa` window, given the failing rows only |
+| `pw qa <name> --tell` | plus one line to the worker pointing at the findings file |
+
+Both flags interrupt somebody, which is why neither is the default. The reviewer launches
+with `PW_EDIT_TOOLS=` empty and Bash on: it reads the plan, the diff and both images of
+each failing row, and reports. It cannot edit the worktree it is judging, because a
+reviewer that can edit fixes what it finds instead of reporting it. **A clean run launches
+no agent and sends nothing.**
+
+`--tell` sends a pointer, never the findings themselves: a long multi-line paste into a TUI
+is how the prompt gets mangled. It resolves the worker by window name only, since the
+reviewer runs in the same directory and would otherwise catch the worker's message.
 
 `pw qa` needs `FIGMA_API_KEY` for the visual lane. It is exported from `.zshrc`, so it
 reaches interactive shells only; qa says what is missing rather than skipping the lane.
@@ -259,8 +276,9 @@ reaches interactive shells only; qa says what is missing rather than skipping th
 Tell each session to finish with this, and do it yourself when you are the one working:
 
 1. `pw qa <name>`, which runs `test`, `typecheck` and `lint` in that worktree and checks
-   the design manifest at the same time. Send the child the findings path, not the
-   findings. All green, or say what is not.
+   the design manifest at the same time. All green, or say what is not. Add `--tell` when
+   you want the child to act on it, `--agent` when the failures need a second pair of eyes
+   on the images.
 2. Re-read its own `plan.md` and report three lists:
    - **Done**, ticked and true.
    - **Partial**, started and not finished, with what is missing.
