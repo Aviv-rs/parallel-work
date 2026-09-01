@@ -173,6 +173,32 @@ The first message is the only context a session gets for free. It must include:
   a visual change.
 - That it ticks and strikes its plan checklist as it goes, so an interrupted run shows
   where it stopped.
+- **That it does not commit.** See below.
+
+### Children do not commit
+
+Every kickoff prompt says this, verbatim:
+
+> Do not commit on your own initiative. Leave your work uncommitted in the working tree so
+> the human can review the diff. This is a default, not a prohibition: if the human asks you
+> to commit, to ship, to open a PR, or invokes a command that does, then do it. Never answer
+> an explicit request to commit by refusing.
+
+The default exists because a child that commits as it goes hands back a branch whose history
+has to be unwound before it can be read, and `git reset` is usually on the deny list, so
+neither the child nor the conductor can undo it. The human ends up running the reset by
+hand, which is the one thing the whole setup exists to avoid.
+
+An explicit request is the opposite case. "commit this", "/ship", "open the PR" are the
+human choosing, and a child that answers with "I am not allowed to commit" has turned a
+sensible default into an obstruction. The default governs what it does unprompted, nothing
+more.
+
+The plan file is worth naming explicitly if you want it committed up front, because it is
+the durable artifact rather than the work. Say so in the prompt when you do.
+
+Uncommitted also keeps `pw status` honest: uncommitted count is what it reports, and work
+buried in commits reads as a clean tree.
 
 **Do not write kickoff or hand-off notes into the worktree yourself.** They land in the
 human's git status, in their editor's source control panel, and eventually in a pull
@@ -187,15 +213,17 @@ The plan file is the durable artifact. Everything else is a prompt.
 
 Tell each session to finish with this, and do it yourself when you are the one working:
 
-1. `test`, `typecheck`, `lint`. All green, or say what is not. The child cannot run these,
+1. Nothing committed unless the human asked for it. The diff sits in the working tree for
+   them to read.
+2. `test`, `typecheck`, `lint`. All green, or say what is not. The child cannot run these,
    so run them in its worktree and send the output back.
-2. Re-read its own `plan.md` and report three lists:
+3. Re-read its own `plan.md` and report three lists:
    - **Done**, ticked and true.
    - **Partial**, started and not finished, with what is missing.
    - **Outside the plan**, anything changed that the plan did not call for.
-3. For UI work, the click path the human should follow. Not a summary of the change.
+4. For UI work, the click path the human should follow. Not a summary of the change.
 
-The third list is the one that matters. An agent that quietly reworked a file nobody asked
+The last list is the one that matters. An agent that quietly reworked a file nobody asked
 about is how a regression ships, and it will not volunteer that unless asked directly.
 
 ## Running them
