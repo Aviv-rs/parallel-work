@@ -11,14 +11,14 @@
     "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/pngjs": "^6.0.5"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
     "@clack/prompts": "^1.7.0",
-    "@types/pngjs": "^6.0.5",
     "pixelmatch": "^7.2.0",
     "pngjs": "^7.0.0"
   }

@@ -227,12 +227,12 @@ multi-line prompt problems start.
 - [x] ~~parseDesign in spec.ts, absent section returns null~~
 - [x] ~~States: default, hover, focus, setup module, reference~~
 - [ ] Node type validation, COMPONENT_SET and size mismatches refused at plan time
-- [ ] Flow discovery from one node: section, row, banner, sibling frames
+- [x] ~~Flow discovery from one node: section, row, banner, sibling frames~~
 - [ ] Cached reference images written to spec/<task>/assets, never used as the baseline
 - [ ] Design drift reported when a fresh fetch differs from the cached copy
-- [ ] Figma REST export
+- [x] ~~Figma REST export~~
 - [ ] Playwright capture per row
-- [ ] Content crop, measured status bar removal, sibling masks, diff
+- [x] ~~Content crop, measured status bar removal, sibling masks, diff~~
 - [ ] Lane selection and gate
 - [ ] pw qa in the CLI
 - [ ] QA agent session mode
