@@ -16,9 +16,21 @@ export const USAGE = `pw - parallel work across git worktrees
   pw shell <name>               A shell in that worktree, no editor needed
   pw path <name>                Print its path, for cd "$(pw path <name>)"
   pw tile [name...]             One tmux pane per worktree, tiled, all shells
+  pw qa <name> [--spec-only] [--visual-only] [--no-send]
+      Check a worktree against its plan. Spec lane always: checklist, changed
+      files, tests, types, lint. Visual lane when the plan has a ## Design
+      section: every pinned Figma node against a screenshot of the same route.
+      Writes spec/<task>/qa-findings.md and points the agent at it.
+
+  pw design discover <node-id> --file <figma-file-key>
+      The whole flow from one pinned link: its section, the frames in its row,
+      and what the row's banner says.
+  pw design cache <name>        Render every pinned node beside the plan
+
   pw status [--json]            Everything: agent, spec progress, dev URL, git
   pw agent start|send|see|kill|list <name>
                                 Agent sessions in tmux, one window per worktree
+  pw agent qa <name>            A read-only reviewer in its own <name>-qa window
   pw agent tile | untile        Every agent as a pane of one window, and back
   pw help                       This list
 

@@ -44,6 +44,29 @@ function claudeCommand(model: string | null) {
 }
 
 /**
+ * The QA reviewer reads: the plan, the diff, the findings file and the images
+ * beside it. It gets no file writing tools at all, because a reviewer that can
+ * edit the code it is judging will fix what it finds instead of reporting it,
+ * and the worker owns those files.
+ */
+export function qaAgentCommand(model: string | null) {
+  const mcpServers = (process.env.PW_MCP ?? DEFAULT_MCP_SERVERS.join(' ')).trim();
+  return [
+    'claude',
+    model ? `--model ${model}` : '',
+    `--permission-mode ${process.env.PW_MODE ?? 'auto'}`,
+    `--allowedTools ${mcpServers} Bash Read Glob Grep Task Skill TodoWrite WebFetch WebSearch`,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/** Its own window, so the worker's session is not interrupted mid-task. */
+export function qaWindowName(worktreeName: string) {
+  return `${worktreeName}-qa`;
+}
+
+/**
  * Every agent needs the same thing from pw: start in this directory and keep
  * working without a human to approve each step. Only claude's flags are ones
  * pw depends on; the others are best-effort defaults, which is why
@@ -109,12 +132,19 @@ export function startAgent(
   config: RepoConfig,
   worktreeName: string,
   model: string | null,
+  { qa = false } = {},
 ) {
   const record = readState(config.name).worktrees[worktreeName];
   if (!record) throw new Error(`no worktree '${worktreeName}'`);
 
   const session = tmuxSessionName(config.name);
-  startWindow(session, worktreeName, record.path, agentCommand(model));
+  const window = qa ? qaWindowName(worktreeName) : worktreeName;
+  const command =
+    qa && readSettings().agentCli === 'claude'
+      ? qaAgentCommand(model)
+      : agentCommand(model);
+  startWindow(session, window, record.path, command);
+  if (qa) return { session, attachWith: `tmux attach -t ${session}` };
   upsertWorktree(config.name, {
     name: worktreeName,
     agentSessionId: record.agentSessionId ?? randomUUID(),

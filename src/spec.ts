@@ -44,6 +44,28 @@ export function parseSpec(markdown: string) {
   return { status: status ?? null, done, total };
 }
 
+export interface ChecklistItem {
+  text: string;
+  checked: boolean;
+}
+
+const CHECKBOX = /^\s*[-*]\s+\[( |x)\]\s*(.+?)\s*$/i;
+const STRIKETHROUGH = /^~~(.*)~~$/;
+
+/**
+ * The agent-owned checklist, item by item. `pw status` only needs the counts;
+ * qa needs the text of each box so it can be held against the diff.
+ */
+export function checklistItems(markdown: string): ChecklistItem[] {
+  return agentOwnedLines(markdown.split('\n'))
+    .map((line) => line.match(CHECKBOX))
+    .filter((match): match is RegExpMatchArray => Boolean(match))
+    .map((match) => ({
+      checked: match[1]!.toLowerCase() === 'x',
+      text: match[2]!.replace(STRIKETHROUGH, '$1').trim(),
+    }));
+}
+
 const LEADING_TASK_ID = /^[a-z]+-\d+(?:-\d+)*-/i;
 
 /** `EROS-787-792-job-opening-qa` -> `job-opening-qa`. */

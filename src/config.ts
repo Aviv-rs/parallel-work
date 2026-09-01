@@ -13,6 +13,10 @@ export interface RepoConfig {
   dev: string | null;
   workspaceFile: string | null;
   editor: string | null;
+  /** What `pw qa` runs in the spec lane. Null means that check is skipped. */
+  test: string | null;
+  typecheck: string | null;
+  lint: string | null;
 }
 
 export const CONFIG_FILE = '.parallel-work.json';
@@ -26,6 +30,26 @@ export function hasConfigFile(root: string) {
 }
 
 const DEFAULT_COPY = ['.env', '.env.local', '.claude', 'playwright/.auth'];
+
+/**
+ * The spec lane runs the repo's own checks, so it has to find them. A script
+ * that is not there is not a failure, it is a check this repo does not have.
+ */
+function scriptCommand(root: string, names: string[]) {
+  const manifest = join(root, 'package.json');
+  if (!existsSync(manifest)) return null;
+  try {
+    const scripts = (
+      JSON.parse(readFileSync(manifest, 'utf8')) as {
+        scripts?: Record<string, string>;
+      }
+    ).scripts;
+    const found = names.find((name) => scripts?.[name]);
+    return found ? `bun run ${found}` : null;
+  } catch {
+    return null;
+  }
+}
 
 function findWorkspaceFile(root: string) {
   const match = readdirSync(root).find((entry) =>
@@ -56,5 +80,9 @@ export function loadRepoConfig(startDirectory = process.cwd()): RepoConfig {
     dev: fileConfig.dev ?? 'bun dev',
     workspaceFile: fileConfig.workspaceFile ?? findWorkspaceFile(root),
     editor: fileConfig.editor ?? null,
+    test: fileConfig.test ?? scriptCommand(root, ['test']),
+    typecheck:
+      fileConfig.typecheck ?? scriptCommand(root, ['typecheck', 'type-check']),
+    lint: fileConfig.lint ?? scriptCommand(root, ['lint']),
   };
 }

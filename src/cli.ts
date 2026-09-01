@@ -24,6 +24,9 @@ import {
   sendToAgent,
   startAgent,
 } from './agent';
+import { discoverFlow } from './figma';
+import { cacheReferenceImages, runQa } from './qa';
+import { findSpec, normaliseNodeId, parseDesign } from './spec';
 import { loadRepoConfig } from './config';
 import { runInteractive } from './interactive';
 import { BRANCH_TYPES, type BranchType } from './slug';
@@ -151,13 +154,15 @@ async function commandAgent(argv: string[]) {
     return;
   }
   if (!name) {
-    throw new Error('usage: pw agent <start|send|see|kill|list> <name>');
+    throw new Error('usage: pw agent <start|qa|send|see|kill|list> <name>');
   }
 
   switch (subcommand) {
+    case 'qa':
     case 'start': {
-      const started = startAgent(config, name, option(argv, 'model'));
-      console.log(`started ${name} in ${started.session}`);
+      const qa = subcommand === 'qa';
+      const started = startAgent(config, name, option(argv, 'model'), { qa });
+      console.log(`started ${qa ? `${name}-qa` : name} in ${started.session}`);
       console.log(started.attachWith);
       break;
     }
@@ -180,9 +185,99 @@ async function commandAgent(argv: string[]) {
       break;
     default:
       throw new Error(
-        'usage: pw agent <start|send|see|kill|list|tile|untile> <name>',
+        'usage: pw agent <start|qa|send|see|kill|list|tile|untile> <name>',
       );
   }
+}
+
+async function commandQa(argv: string[]) {
+  const name = argv[0];
+  if (!name) throw new Error('usage: pw qa <name> [--spec-only] [--visual-only]');
+
+  const config = loadRepoConfig();
+  const lanes = flag(argv, 'spec-only')
+    ? 'spec'
+    : flag(argv, 'visual-only')
+      ? 'visual'
+      : 'both';
+
+  const result = await runQa({ config, name, lanes, report });
+
+  console.log('');
+  for (const failure of result.failures) console.log(`FAIL  ${failure}`);
+  for (const note of result.notes) console.log(`note  ${note}`);
+  if (result.findingsFile) console.log(`\nfindings   ${result.findingsFile}`);
+
+  // A one line pointer, never the findings themselves: a long multi-line paste
+  // into a TUI is how the prompt gets mangled.
+  if (result.findingsFile && !flag(argv, 'no-send')) {
+    try {
+      await sendToAgent(config, name, `QA run finished, read ${result.findingsFile}`);
+      console.log(`pointer    sent to the ${name} agent`);
+    } catch {
+      // No agent in that window is normal: pw qa is also run by hand.
+    }
+  }
+
+  if (result.failures.length) process.exit(1);
+}
+
+/**
+ * Plan-time helpers. Discovery turns the one link a ticket carries into the
+ * whole flow, and the cache pins what it found next to the plan.
+ */
+async function commandDesign(argv: string[]) {
+  const [subcommand, ...rest] = argv;
+  const config = loadRepoConfig();
+
+  if (subcommand === 'discover') {
+    const fileKey = option(argv, 'file');
+    const node = rest.find(
+      (part) => !part.startsWith('--') && part !== fileKey,
+    );
+    if (!node || !fileKey) {
+      throw new Error('usage: pw design discover <node-id> --file <figma-file-key>');
+    }
+
+    const flow = await discoverFlow(fileKey, normaliseNodeId(node));
+    console.log(`page       ${flow.page ?? '(none)'}`);
+    console.log(`section    ${flow.section?.name ?? '(none)'}`);
+    console.log(`banner     ${flow.banner?.text ?? '(none)'}`);
+    for (const member of flow.row) {
+      const { width, height } = member.box;
+      console.log(
+        `  ${member.id.padEnd(14)} ${member.type.padEnd(14)} ${Math.round(width)}x${Math.round(height)}  ${member.name}`,
+      );
+    }
+    return;
+  }
+
+  if (subcommand === 'cache') {
+    const name = rest.find((part) => !part.startsWith('--'));
+    if (!name) throw new Error('usage: pw design cache <name>');
+
+    const record = readState(config.name).worktrees[name];
+    const slug = name.replace(`${config.name}-`, '');
+    const planFile =
+      findSpec(record?.path ?? config.root, record?.taskId ?? null, slug) ??
+      findSpec(config.root, record?.taskId ?? null, slug);
+    if (!planFile) throw new Error(`no spec/<task>/plan.md for '${name}'`);
+
+    const manifest = parseDesign(await Bun.file(planFile).text());
+    if (!manifest?.fileKey) {
+      throw new Error(`${planFile} has no Design section with a Figma file key`);
+    }
+
+    const written = await cacheReferenceImages(
+      manifest.fileKey,
+      manifest.rows.map((row) => row.nodeId),
+      planFile,
+    );
+    for (const path of written) console.log(path);
+    return;
+  }
+
+  throw new Error('usage: pw design <discover|cache> ...');
 }
 
 function commandRemove(argv: string[]) {
@@ -285,6 +380,12 @@ try {
       break;
     case 'agent':
       await commandAgent(argv);
+      break;
+    case 'qa':
+      await commandQa(argv);
+      break;
+    case 'design':
+      await commandDesign(argv);
       break;
     case 'dev':
       await commandDev(argv);

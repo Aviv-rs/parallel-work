@@ -226,16 +226,16 @@ multi-line prompt problems start.
 
 - [x] ~~parseDesign in spec.ts, absent section returns null~~
 - [x] ~~States: default, hover, focus, setup module, reference~~
-- [ ] Node type validation, COMPONENT_SET and size mismatches refused at plan time
+- [x] ~~Node type validation, COMPONENT_SET and size mismatches refused at plan time~~
 - [x] ~~Flow discovery from one node: section, row, banner, sibling frames~~
-- [ ] Cached reference images written to spec/<task>/assets, never used as the baseline
-- [ ] Design drift reported when a fresh fetch differs from the cached copy
+- [x] ~~Cached reference images written to spec/<task>/assets, never used as the baseline~~
+- [x] ~~Design drift reported when a fresh fetch differs from the cached copy~~
 - [x] ~~Figma REST export~~
-- [ ] Playwright capture per row
+- [x] ~~Playwright capture per row~~
 - [x] ~~Content crop, measured status bar removal, sibling masks, diff~~
-- [ ] Lane selection and gate
-- [ ] pw qa in the CLI
-- [ ] QA agent session mode
+- [x] ~~Lane selection and gate~~
+- [x] ~~pw qa in the CLI~~
+- [x] ~~QA agent session mode~~
 - [ ] Both skills updated
 
 ## Manual tests

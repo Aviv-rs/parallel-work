@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { agentCommand } from './agent';
+import { agentCommand, qaAgentCommand, qaWindowName } from './agent';
 import type { Settings } from './settings';
 
 const settings = (patch: Partial<Settings> = {}): Settings => ({
@@ -51,5 +51,24 @@ describe('agentCommand', () => {
       settings({ agentCli: 'claude', agentCommands: { codex: 'codex weird' } }),
     );
     expect(command).toStartWith('claude ');
+  });
+});
+
+describe('qaAgentCommand', () => {
+  it('gives the reviewer no file writing tools', () => {
+    const command = qaAgentCommand(null);
+    for (const tool of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']) {
+      expect(command).not.toContain(` ${tool}`);
+    }
+  });
+
+  it('keeps Bash, so it can run git and read the diff', () => {
+    expect(qaAgentCommand(null)).toContain('Bash');
+  });
+
+  it('lands in its own window, beside the worker rather than over it', () => {
+    expect(qaWindowName('EROS-425-candidate-resume')).toBe(
+      'EROS-425-candidate-resume-qa',
+    );
   });
 });
