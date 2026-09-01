@@ -224,8 +224,8 @@ multi-line prompt problems start.
 
 ## Checklist
 
-- [ ] parseDesign in spec.ts, absent section returns null
-- [ ] States: default, hover, focus, setup module, reference
+- [x] ~~parseDesign in spec.ts, absent section returns null~~
+- [x] ~~States: default, hover, focus, setup module, reference~~
 - [ ] Node type validation, COMPONENT_SET and size mismatches refused at plan time
 - [ ] Flow discovery from one node: section, row, banner, sibling frames
 - [ ] Cached reference images written to spec/<task>/assets, never used as the baseline

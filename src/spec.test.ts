@@ -4,7 +4,13 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'bun:test';
 
-import { descriptiveTail, findSpec, parseSpec } from './spec';
+import {
+  descriptiveTail,
+  findSpec,
+  parseDesign,
+  parseSpec,
+  viewportFor,
+} from './spec';
 
 const MULTI_TICKET_PLAN = `# EROS-642 Two refinements
 
@@ -125,5 +131,96 @@ describe('findSpec', () => {
   it('reports nothing when neither the id nor the tail match', () => {
     const root = specFixture(['EROS-747-job-opening-qa']);
     expect(findSpec(root, 'EROS-900', 'EROS-900-something-else')).toBeNull();
+  });
+});
+
+const DESIGN_PLAN = `# EROS-425 Candidate resume
+
+Status: planned
+
+## Design
+
+Figma file: WdGzjurMa53pyVeu1cU5I9
+Mobile 390x844 unless a row says otherwise. Desktop 1440x900.
+
+| node | url | component | viewport | state |
+| --- | --- | --- | --- | --- |
+| 4263-32210 | /candidate/resume | CandidateResumeSection | mobile | default |
+| 4263:33001 | /candidate/resume | CandidateResumeSection | mobile | setup:resume-filled |
+| 4263:33002 | /candidate/resume | CandidateResumeSection | mobile | hover:button[type=submit] |
+| 2917:57231 | | MobileHeader | | reference |
+
+### Assets
+
+| node | file |
+| --- | --- |
+| 4263:32215 | src/assets/images/resume-empty-state-illustration.png |
+| | src/assets/images/orphan.png |
+
+## Reuse
+
+- nothing here is a manifest row
+`;
+
+describe('parseDesign', () => {
+  it('returns null when the plan has no Design section', () => {
+    expect(parseDesign(PLAN)).toBeNull();
+  });
+
+  it('reads the file key and the named viewports', () => {
+    const design = parseDesign(DESIGN_PLAN)!;
+    expect(design.fileKey).toBe('WdGzjurMa53pyVeu1cU5I9');
+    expect(design.viewports.mobile).toEqual({ width: 390, height: 844 });
+    expect(design.viewports.desktop).toEqual({ width: 1440, height: 900 });
+  });
+
+  it('normalises a url-style node id to the API form', () => {
+    expect(parseDesign(DESIGN_PLAN)!.rows[0]!.nodeId).toBe('4263:32210');
+  });
+
+  it('reads every state kind', () => {
+    const states = parseDesign(DESIGN_PLAN)!.rows.map((row) => row.state);
+    expect(states).toEqual([
+      { kind: 'default' },
+      { kind: 'setup', module: 'resume-filled' },
+      { kind: 'hover', selector: 'button[type=submit]' },
+      { kind: 'reference' },
+    ]);
+  });
+
+  it('leaves empty cells null instead of empty strings', () => {
+    const reference = parseDesign(DESIGN_PLAN)!.rows[3]!;
+    expect(reference.url).toBeNull();
+    expect(reference.viewport).toBeNull();
+    expect(reference.component).toBe('MobileHeader');
+  });
+
+  it('stops at the next section, so later tables are not manifest rows', () => {
+    expect(parseDesign(DESIGN_PLAN)!.rows).toHaveLength(4);
+  });
+
+  it('keeps an asset row with no node id, so qa can call it out', () => {
+    const assets = parseDesign(DESIGN_PLAN)!.assets;
+    expect(assets).toEqual([
+      {
+        nodeId: '4263:32215',
+        file: 'src/assets/images/resume-empty-state-illustration.png',
+      },
+      { nodeId: null, file: 'src/assets/images/orphan.png' },
+    ]);
+  });
+
+  it('falls back to the only viewport when a row names none', () => {
+    const design = parseDesign(
+      '## Design\n\nMobile 390x844\n\n| node | url |\n| --- | --- |\n| 1:2 | /a |\n',
+    )!;
+    expect(viewportFor(design, design.rows[0]!)).toEqual({
+      width: 390,
+      height: 844,
+    });
+  });
+
+  it('still counts the checklist of a plan that has a Design section', () => {
+    expect(parseSpec(DESIGN_PLAN).total).toBe(0);
   });
 });
