@@ -24,13 +24,17 @@ import {
   agentStatus,
   isAgentCliInstalled,
   killAgent,
+  qaWindowName,
+  runningAgents,
   seeAgent,
   sendToAgent,
   startAgent,
+  startQaAgent,
 } from './agent';
 import { hasConfigFile, loadRepoConfig, type RepoConfig } from './config';
 import { liveMenu } from './live-menu';
 import { statusBoard } from './pixel-agent';
+import { qaBrief, runQa, type QaReport } from './qa';
 import {
   AGENT_CLIS,
   readSettings,
@@ -316,6 +320,154 @@ async function actionAgent(config: RepoConfig) {
   prompt.log.success('sent');
 }
 
+type QaLanes = NonNullable<Parameters<typeof runQa>[0]['lanes']>;
+
+/**
+ * Same follow-ups as the CLI flags, asked instead of passed. Both interrupt
+ * somebody, so a clean run never gets here and "nothing" is the first option.
+ */
+async function qaFollowUp(
+  config: RepoConfig,
+  name: string,
+  result: QaReport,
+  brief: string,
+) {
+  const reviewerRunning = agentStatus(config, qaWindowName(name)).running;
+  const workerRunning = runningAgents(config).includes(name);
+
+  const choice = await prompt.select({
+    message: `${result.failures.length} failed. Hand it to someone?`,
+    options: [
+      { value: 'nothing', label: 'Nothing, I will read the findings' },
+      {
+        value: 'reviewer',
+        label: reviewerRunning
+          ? 'Restart the reviewer with these findings'
+          : 'Start a read-only reviewer',
+        hint: `${qaWindowName(name)} window, failing rows only`,
+      },
+      {
+        value: 'tell',
+        label: 'Tell the worker',
+        hint: workerRunning
+          ? 'one line pointing at the findings file'
+          : `no agent named '${name}' is running`,
+      },
+      { value: 'both', label: 'Reviewer and worker' },
+    ],
+  });
+  if (prompt.isCancel(choice) || choice === 'nothing') return;
+
+  if (choice === 'reviewer' || choice === 'both') {
+    if (reviewerRunning) killAgent(config, qaWindowName(name));
+    const spinner = prompt.spinner();
+    spinner.start('starting reviewer');
+    try {
+      const started = await startQaAgent(config, name, null, brief);
+      if (started.briefed) {
+        spinner.stop(`reviewing in ${started.session}:${started.window}`);
+      } else {
+        spinner.stop(
+          `started in ${started.session}:${started.window}, but it is ${started.state === 'blocked' ? 'sitting on a dialog' : 'not listening yet'}`,
+        );
+        prompt.log.warn(`clear it, then hand it ${started.briefFile}`);
+      }
+      prompt.log.info(`tmux attach -t ${started.session}`);
+    } catch (error) {
+      spinner.stop('failed');
+      prompt.log.error((error as Error).message);
+    }
+  }
+
+  if (choice === 'tell' || choice === 'both') {
+    if (!result.findingsFile) {
+      prompt.log.warn('nothing to point at, no findings file was written');
+    } else if (!workerRunning) {
+      prompt.log.warn(`no agent named '${name}' is running`);
+    } else {
+      await sendToAgent(config, name, `QA run finished, read ${result.findingsFile}`);
+      prompt.log.success(`pointer sent to ${name}`);
+    }
+  }
+}
+
+async function runQaHere(config: RepoConfig, name: string, lanes: QaLanes) {
+  const spinner = prompt.spinner();
+  spinner.start('checking');
+  let result: QaReport;
+  try {
+    result = await runQa({
+      config,
+      name,
+      lanes,
+      report: (line) => spinner.message(line),
+    });
+  } catch (error) {
+    spinner.stop('failed');
+    prompt.log.error((error as Error).message);
+    return;
+  }
+  spinner.stop(
+    result.failures.length ? `${result.failures.length} failed` : 'all green',
+  );
+
+  for (const failure of result.failures) prompt.log.error(`FAIL  ${failure}`);
+  for (const note of result.notes) prompt.log.message(`note  ${note}`);
+  if (result.findingsFile) prompt.log.info(`findings  ${result.findingsFile}`);
+
+  const brief = qaBrief(result);
+  if (brief) await qaFollowUp(config, name, result, brief);
+}
+
+/**
+ * The reviewer is resolved by window name only, never by directory: it runs in
+ * the worker's own worktree, so a directory match would report the worker.
+ */
+async function actionQa(config: RepoConfig) {
+  const worktree = await pickWorktree(config, 'QA which worktree');
+  if (!worktree) return;
+
+  for (;;) {
+    const reviewer = agentStatus(config, qaWindowName(worktree.name));
+    const reviewerState = !reviewer.running
+      ? 'no reviewer'
+      : reviewer.busy
+        ? 'reviewer working'
+        : 'reviewer waiting on you';
+
+    const choice = await prompt.select({
+      message: `${worktree.name}: ${reviewerState}`,
+      options: [
+        { value: 'both', label: 'Run the checks', hint: 'spec lane, visual lane if the plan pins a design' },
+        { value: 'spec', label: 'Spec lane only', hint: 'checklist, changed files, tests, types, lint' },
+        { value: 'visual', label: 'Visual lane only', hint: 'Figma nodes against screenshots' },
+        ...(reviewer.running
+          ? [
+              { value: 'see', label: "Show the reviewer's screen" },
+              { value: 'kill', label: 'Kill the reviewer' },
+            ]
+          : []),
+        { value: 'back', label: 'Back' },
+      ],
+    });
+    if (prompt.isCancel(choice) || choice === 'back') return;
+
+    if (choice === 'see') {
+      console.log(
+        seeAgent(config, qaWindowName(worktree.name), 60) ?? '(nothing captured)',
+      );
+      continue;
+    }
+    if (choice === 'kill') {
+      prompt.log.success(
+        killAgent(config, qaWindowName(worktree.name)) ? 'killed' : 'not running',
+      );
+      continue;
+    }
+    await runQaHere(config, worktree.name, choice as QaLanes);
+  }
+}
+
 function printList(config: RepoConfig) {
   const worktrees = listWorktrees(config);
   if (!worktrees.length) {
@@ -463,6 +615,7 @@ const MAIN_MENU = [
   { value: 'status', label: 'Status of everything' },
   { value: 'worktrees', label: 'Worktrees' },
   { value: 'agent', label: 'Agents' },
+  { value: 'qa', label: 'QA' },
   { value: 'commands', label: 'Command list' },
   { value: 'settings', label: 'Settings' },
   { value: 'quit', label: 'Quit' },
@@ -519,6 +672,7 @@ export async function runInteractive(initialConfig: RepoConfig) {
     if (action === 'status') printStatus(config);
     if (action === 'worktrees') await actionWorktrees(config);
     if (action === 'agent') await actionAgent(config);
+    if (action === 'qa') await actionQa(config);
     if (action === 'commands') prompt.note(USAGE, 'commands');
     if (action === 'settings') await actionSettings();
   }

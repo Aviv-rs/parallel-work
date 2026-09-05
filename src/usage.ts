@@ -1,6 +1,6 @@
 export const USAGE = `pw - parallel work across git worktrees
 
-  pw                            Interactive mode: browse, create, remove, dev servers
+  pw                            Interactive mode: worktrees, agents, qa, dev servers
   pw init                       Write .parallel-work.json for this repo, asking first
 
   pw wt <slug> [--type feature|bugfix|chore|refactor|docs] [--no-dev] [--no-install]

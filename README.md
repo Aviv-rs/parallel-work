@@ -50,7 +50,7 @@ Say "not now" and pw runs on defaults and asks again next time. `pw init` re-run
 ## Use
 
 ```bash
-pw -i                                 # interactive: browse, create, remove, dev servers
+pw -i                                 # interactive: worktrees, agents, qa, dev servers
 pw wt EROS-696-onboarding-work-area   # create everything and start the dev server
 pw list                               # branches, dev URLs, uncommitted and unmerged counts
 pw list --json                        # same data for other tools
@@ -88,8 +88,10 @@ wants you, cyan while they work, blue when everything is stopped, red only when 
 folder has gone missing. Its caption is the work, `18/26 done`, `needs review`, `in
 review`, `all done`, never the plumbing.
 
-The menu is `Worktrees` (list, create, dev server, logs, open, remove), `Agents`, a
-command list, and settings. `Status of everything` only appears when the live board is
+The menu is `Worktrees` (list, create, dev server, logs, open, remove), `Agents`, `QA`, a
+command list, and settings. `QA` runs the same checks as `pw qa` on a picked worktree and,
+only when something failed, asks whether to start the reviewer or point the worker at the
+findings; while a reviewer is up, its window can be read or killed from the same place. `Status of everything` only appears when the live board is
 switched off, since otherwise it is already on screen. Settings toggles the board and
 persists to `~/.parallel-work/settings.json`.
 
