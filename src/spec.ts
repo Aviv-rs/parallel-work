@@ -88,6 +88,7 @@ export function findSpec(repoRoot: string, taskId: string | null, slug: string) 
   const tail = descriptiveTail(slug);
 
   const match =
+    entries.find((entry) => entry.toLowerCase() === slug.toLowerCase()) ??
     entries.find((entry) => entry.toLowerCase().startsWith(wanted)) ??
     (tail ? entries.find((entry) => descriptiveTail(entry) === tail) : undefined);
   if (!match) return null;

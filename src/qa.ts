@@ -8,6 +8,7 @@ import {
 import { basename, dirname, join } from 'node:path';
 
 import { startDev, type Report } from './actions';
+import { devUrlsFromLog } from './dev-server';
 import type { RepoConfig } from './config';
 import {
   fetchNodes,
@@ -24,7 +25,7 @@ import {
   prepareApp,
   prepareDesign,
 } from './image-diff';
-import { capture, DEVICE_SCALE } from './screenshot';
+import { BouncedError, capture, closeCaptureBrowser, DEVICE_SCALE } from './screenshot';
 import {
   checklistItems,
   findSpec,
@@ -36,7 +37,7 @@ import {
   type DesignRow,
   type Viewport,
 } from './spec';
-import { readState, STATE_DIR } from './state';
+import { logPath, readState, STATE_DIR } from './state';
 import { tryRun } from './shell';
 
 /** Over this share of moved pixels a layout is worth a human look. */
@@ -339,6 +340,20 @@ export interface QaOptions {
   report?: Report;
 }
 
+/**
+ * The recorded URL outlives the server that printed it: a restart can land on
+ * another port while the state still names the old one, and a stale URL turns
+ * every row into a connection refusal.
+ */
+async function isUrlAlive(url: string) {
+  try {
+    await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(3_000) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function devBaseUrl(
   config: RepoConfig,
   name: string,
@@ -346,7 +361,10 @@ async function devBaseUrl(
   report: Report,
 ) {
   const record = readState(config.name).worktrees[name];
-  if (record?.devUrl) return record.devUrl;
+  const logged = devUrlsFromLog(logPath(config.name, name)).localUrl;
+  for (const url of [record?.devUrl, logged]) {
+    if (url && (await isUrlAlive(url))) return url;
+  }
 
   report('dev        not running, starting it for the visual lane');
   const started = await startDev(config, name, worktreePath, report);
@@ -463,6 +481,11 @@ async function visualLane(
       // to shoot the default state and call it a pass.
       result.status = 'error';
       result.message = (error as Error).message;
+      if (error instanceof BouncedError) {
+        const landed = join(images, assetFileName(row.nodeId).replace('.png', '-landed.png'));
+        writeFileSync(landed, error.landedScreenshot);
+        result.message += ` Landed page saved to ${landed}.`;
+      }
       qaReport.failures.push(`${row.nodeId} (${result.state}): ${result.message}`);
     }
     qaReport.rows.push(result);
@@ -696,14 +719,21 @@ export async function runQa({
     qaReport.notes.push('no Design section in the plan, so no visual lane');
   } else {
     report(`design     ${manifest.rows.length} rows, ${manifest.assets.length} assets`);
-    await visualLane(
-      { config, name, lanes },
-      record.path,
-      planFile!,
-      manifest,
-      qaReport,
-      report,
-    );
+    try {
+      await visualLane(
+        { config, name, lanes },
+        record.path,
+        planFile!,
+        manifest,
+        qaReport,
+        report,
+      );
+    } finally {
+      // The lane shares one browser across its rows, so it is closed here
+      // rather than per row, and on the failure path too or the run leaves a
+      // headless chromium behind.
+      await closeCaptureBrowser();
+    }
   }
 
   if (planFile) {
