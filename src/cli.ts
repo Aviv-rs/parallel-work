@@ -32,7 +32,14 @@ import { loadRepoConfig } from './config';
 import { runInteractive } from './interactive';
 import { BRANCH_TYPES, type BranchType } from './slug';
 import { runSetup } from './setup';
-import { gridWindows, tmuxSessionName, ungridWindows } from './tmux';
+import {
+  attachHint,
+  describeGrouping,
+  describeUngrouping,
+  gridWindows,
+  sessionName,
+  ungridWindows,
+} from './backend';
 import { readState } from './state';
 import { USAGE } from './usage';
 
@@ -144,14 +151,14 @@ async function commandAgent(argv: string[]) {
   if (subcommand === 'tile') {
     const running = runningAgents(config).filter((window) => window !== 'grid');
     if (!running.length) throw new Error('no agents running to tile');
-    gridWindows(tmuxSessionName(config.name), running);
-    console.log(`tiled ${running.length} agents into one window`);
-    console.log(`tmux attach -t ${tmuxSessionName(config.name)}`);
+    gridWindows(sessionName(config.name), running);
+    console.log(describeGrouping(running.length));
+    console.log(attachHint(sessionName(config.name)));
     return;
   }
   if (subcommand === 'untile') {
-    ungridWindows(tmuxSessionName(config.name));
-    console.log('agents split back into their own windows');
+    ungridWindows(sessionName(config.name));
+    console.log(describeUngrouping());
     return;
   }
   if (!name) {
@@ -235,7 +242,7 @@ async function commandQa(argv: string[]) {
         );
         console.log(`           clear it, then hand it ${started.briefFile}`);
       }
-      console.log(`           tmux attach -t ${started.session}`);
+      console.log(`           ${attachHint(started.session)}`);
     }
   }
 
@@ -383,7 +390,7 @@ try {
         argv.filter((part) => !part.startsWith('--')),
       );
       console.log(`tiled into ${tiled.session}:${tiled.window}`);
-      console.log(`tmux attach -t ${tiled.session}`);
+      console.log(attachHint(tiled.session));
       break;
     }
     case 'shell': {

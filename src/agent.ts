@@ -5,6 +5,7 @@ import { readSettings, type AgentCli } from './settings';
 import { tryRun } from './shell';
 import { readState, upsertWorktree } from './state';
 import {
+  attachHint,
   capturePane,
   hasSession,
   killWindow,
@@ -12,10 +13,10 @@ import {
   resolveTarget,
   parkPrompt,
   sendPrompt,
+  sessionName,
   startWindow,
-  tmuxSessionName,
   waitForPrompt,
-} from './tmux';
+} from './backend';
 
 const DEFAULT_MCP_SERVERS = [
   'mcp__plugin_atlassian_atlassian',
@@ -95,7 +96,7 @@ export async function startQaAgent(
   const record = readState(config.name).worktrees[worktreeName];
   if (!record) throw new Error(`no worktree '${worktreeName}'`);
 
-  const session = tmuxSessionName(config.name);
+  const session = sessionName(config.name);
   const window = qaWindowName(worktreeName);
   const settings = readSettings();
   const command =
@@ -173,7 +174,7 @@ export function agentStatus(
   name: string,
   worktreePath?: string,
 ): AgentStatus {
-  const session = tmuxSessionName(config.name);
+  const session = sessionName(config.name);
   if (!hasSession(session) || !resolveTarget(session, name, worktreePath)) {
     return { name, running: false, busy: false, lastLine: '' };
   }
@@ -194,14 +195,14 @@ export function startAgent(
   const record = readState(config.name).worktrees[worktreeName];
   if (!record) throw new Error(`no worktree '${worktreeName}'`);
 
-  const session = tmuxSessionName(config.name);
+  const session = sessionName(config.name);
   startWindow(session, worktreeName, record.path, agentCommand(model));
   upsertWorktree(config.name, {
     name: worktreeName,
     agentSessionId: record.agentSessionId ?? randomUUID(),
   });
 
-  return { session, attachWith: `tmux attach -t ${session}` };
+  return { session, attachWith: attachHint(session) };
 }
 
 export async function sendToAgent(
@@ -213,7 +214,7 @@ export async function sendToAgent(
   if (!record) throw new Error(`no worktree '${worktreeName}'`);
 
   const sent = sendPrompt(
-    tmuxSessionName(config.name),
+    sessionName(config.name),
     worktreeName,
     prompt,
     record.path,
@@ -228,7 +229,7 @@ export async function sendToAgent(
 export function seeAgent(config: RepoConfig, worktreeName: string, lines: number) {
   const record = readState(config.name).worktrees[worktreeName];
   return capturePane(
-    tmuxSessionName(config.name),
+    sessionName(config.name),
     worktreeName,
     lines,
     record?.path,
@@ -237,10 +238,10 @@ export function seeAgent(config: RepoConfig, worktreeName: string, lines: number
 
 export function killAgent(config: RepoConfig, worktreeName: string) {
   const record = readState(config.name).worktrees[worktreeName];
-  return killWindow(tmuxSessionName(config.name), worktreeName, record?.path);
+  return killWindow(sessionName(config.name), worktreeName, record?.path);
 }
 
 export function runningAgents(config: RepoConfig) {
-  const session = tmuxSessionName(config.name);
+  const session = sessionName(config.name);
   return hasSession(session) ? listWindows(session) : [];
 }

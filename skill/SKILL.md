@@ -332,6 +332,11 @@ Tell each session to finish with this, and do it yourself when you are the one w
    - **Partial**, started and not finished, with what is missing.
    - **Outside the plan**, anything changed that the plan did not call for.
 4. For UI work, the click path the human should follow. Not a summary of the change.
+5. Delete the design cache before anything is committed: `rm -rf spec/<task>/assets/`.
+   Those PNGs exist for the worker and the reviewer while the task is open. They are not
+   a diff baseline (qa refetches) and the screenshot drift lane is not something we keep
+   using, so they never ship. Do this in the worktree before `/ship`, and check
+   `git status` shows no `spec/<task>/assets/` afterwards.
 
 The last list is the one that matters. An agent that quietly reworked a file nobody asked
 about is how a regression ships, and it will not volunteer that unless asked directly.

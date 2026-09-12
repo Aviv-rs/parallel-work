@@ -31,15 +31,18 @@ import {
   startAgent,
   startQaAgent,
 } from './agent';
+import { attachHint, isBackendInstalled, sessionName } from './backend';
 import { hasConfigFile, loadRepoConfig, type RepoConfig } from './config';
 import { liveMenu } from './live-menu';
 import { statusBoard } from './pixel-agent';
 import { qaBrief, runQa, type QaReport } from './qa';
 import {
   AGENT_CLIS,
+  BACKENDS,
   readSettings,
   writeSettings,
   type AgentCli,
+  type Backend,
 } from './settings';
 import { runSetup } from './setup';
 import { BRANCH_TYPES, type BranchType } from './slug';
@@ -303,7 +306,7 @@ async function actionAgent(config: RepoConfig) {
     return;
   }
   if (choice === 'attach') {
-    prompt.log.info(`tmux attach -t pw-${config.name}`);
+    prompt.log.info(attachHint(sessionName(config.name)));
     return;
   }
   if (choice === 'kill') {
@@ -372,7 +375,7 @@ async function qaFollowUp(
         );
         prompt.log.warn(`clear it, then hand it ${started.briefFile}`);
       }
-      prompt.log.info(`tmux attach -t ${started.session}`);
+      prompt.log.info(attachHint(started.session));
     } catch (error) {
       spinner.stop('failed');
       prompt.log.error((error as Error).message);
@@ -515,6 +518,39 @@ async function chooseAgentCli(current: AgentCli) {
   }
 }
 
+const BACKEND_LABELS: Record<Backend, string> = {
+  tmux: 'tmux',
+  herdr: 'herdr',
+};
+
+async function chooseBackend(current: Backend) {
+  const picked = await prompt.select({
+    message: 'Which multiplexer runs agent sessions and windows',
+    options: BACKENDS.map((backend) => ({
+      value: backend,
+      label: `${BACKEND_LABELS[backend]}${backend === current ? ' (current)' : ''}`,
+      hint: isBackendInstalled(backend)
+        ? undefined
+        : `${BACKEND_LABELS[backend]} not on PATH`,
+    })),
+    initialValue: current,
+  });
+  if (prompt.isCancel(picked)) return;
+
+  const next = writeSettings({ backend: picked as Backend });
+  prompt.log.success(`backend: ${BACKEND_LABELS[next.backend]}`);
+  if (!isBackendInstalled(next.backend)) {
+    prompt.log.warn(
+      `${BACKEND_LABELS[next.backend]} is not on PATH, so starting an agent will fail until it is`,
+    );
+  }
+  if (next.backend === 'herdr') {
+    prompt.log.info(
+      '"Tile them all" splits panes in one tab. Grouping agents into one window is a no-op: herdr already shows every agent as its own clickable tab.',
+    );
+  }
+}
+
 async function actionSettings() {
   for (;;) {
     const settings = readSettings();
@@ -533,6 +569,11 @@ async function actionSettings() {
           label: `Agent CLI: ${AGENT_CLI_LABELS[settings.agentCli]}`,
           hint: AGENT_BINARIES[settings.agentCli],
         },
+        {
+          value: 'backend',
+          label: `Backend: ${BACKEND_LABELS[settings.backend]}`,
+          hint: 'tmux or herdr, runs every agent session and window',
+        },
         { value: 'back', label: 'Back' },
       ],
     });
@@ -543,6 +584,7 @@ async function actionSettings() {
       prompt.log.success(`live status board ${next.liveStatus ? 'on' : 'off'}`);
     }
     if (choice === 'agentCli') await chooseAgentCli(settings.agentCli);
+    if (choice === 'backend') await chooseBackend(settings.backend);
   }
 }
 
@@ -568,7 +610,7 @@ async function actionTile(config: RepoConfig) {
   try {
     const tiled = tileWorktrees(config, picked as string[]);
     prompt.log.success(`tiled into ${tiled.session}:${tiled.window}`);
-    prompt.log.info(`tmux attach -t ${tiled.session}`);
+    prompt.log.info(attachHint(tiled.session));
   } catch (error) {
     prompt.log.error(error instanceof Error ? error.message : String(error));
   }
@@ -590,7 +632,7 @@ async function actionWorktrees(config: RepoConfig) {
         { value: 'create', label: 'New worktree' },
         { value: 'remove', label: 'Remove worktree' },
         { value: 'list', label: 'List' },
-        { value: 'tile', label: 'Tile them all in tmux', hint: 'one shell per worktree' },
+        { value: 'tile', label: 'Tile them all', hint: 'one shell per worktree' },
         { value: 'shell', label: 'Open a shell here' },
         { value: 'dev', label: 'Dev server' },
         { value: 'logs', label: 'Dev server logs' },

@@ -13,7 +13,7 @@ import {
   waitForDevUrl,
 } from './dev-server';
 import { findPullRequest, type PullRequest } from './pull-request';
-import { tileShells, tmuxSessionName } from './tmux';
+import { sessionName, tileShells } from './backend';
 import { logPath } from './state';
 import { parseSlug, type BranchType } from './slug';
 import { run, tryRun } from './shell';
@@ -205,7 +205,7 @@ export function tileWorktrees(config: RepoConfig, names: string[]) {
   if (!wanted.length) throw new Error('no worktrees to tile');
 
   return tileShells(
-    tmuxSessionName(config.name),
+    sessionName(config.name),
     wanted.map((worktree) => ({ name: worktree.name, cwd: worktree.path })),
   );
 }

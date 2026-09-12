@@ -7,6 +7,7 @@ const settings = (patch: Partial<Settings> = {}): Settings => ({
   liveStatus: true,
   agentCli: 'claude',
   agentCommands: {},
+  backend: 'tmux',
   ...patch,
 });
 
