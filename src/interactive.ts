@@ -3,6 +3,7 @@ import * as prompt from '@clack/prompts';
 import {
   EDITOR_PATH_HELP,
   clearDevLog,
+  cleanStaleWorktrees,
   createWorktreeFlow,
   devLogPath,
   followDevLog,
@@ -623,6 +624,29 @@ async function actionShell(config: RepoConfig) {
   openShell(config, worktree.name);
 }
 
+/**
+ * A worktree deleted outside pw (manual `rm`, Finder, a crashed flow) leaves
+ * its registry entry behind — nothing else notices. This sweeps those out.
+ */
+async function actionClean(config: RepoConfig) {
+  const stale = listWorktrees(config).filter((worktree) => !worktree.exists);
+  if (!stale.length) {
+    prompt.log.info('nothing stale, registry matches disk');
+    return;
+  }
+
+  const confirmed = await prompt.confirm({
+    message: `Drop ${stale.length} stale entr${stale.length === 1 ? 'y' : 'ies'}: ${stale
+      .map((worktree) => worktree.name)
+      .join(', ')}`,
+    initialValue: true,
+  });
+  if (prompt.isCancel(confirmed) || !confirmed) return;
+
+  const cleaned = cleanStaleWorktrees(config, report);
+  prompt.log.success(`dropped ${cleaned.length}`);
+}
+
 /** Everything that acts on a worktree, one level down from the main menu. */
 async function actionWorktrees(config: RepoConfig) {
   for (;;) {
@@ -631,6 +655,7 @@ async function actionWorktrees(config: RepoConfig) {
       options: [
         { value: 'create', label: 'New worktree' },
         { value: 'remove', label: 'Remove worktree' },
+        { value: 'clean', label: 'Clean up stale entries', hint: 'folders deleted outside pw' },
         { value: 'list', label: 'List' },
         { value: 'tile', label: 'Tile them all', hint: 'one shell per worktree' },
         { value: 'shell', label: 'Open a shell here' },
@@ -650,6 +675,7 @@ async function actionWorktrees(config: RepoConfig) {
     if (choice === 'logs') await actionLogs(config);
     if (choice === 'open') await actionOpen(config);
     if (choice === 'remove') await actionRemove(config);
+    if (choice === 'clean') await actionClean(config);
   }
 }
 

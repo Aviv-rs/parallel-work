@@ -8,6 +8,7 @@ export const USAGE = `pw - parallel work across git worktrees
       start the dev server and print its URL.
 
   pw rm <name> [--force]        Remove a worktree and everything pw added for it
+  pw clean                      Drop registry entries whose folder is gone
   pw list [--json]              Worktrees, branches, dev URLs
   pw dev <name> [--stop]        Start or stop the dev server for a worktree
   pw logs <name> [--tail N] [--follow] [--clear]

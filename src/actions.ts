@@ -365,3 +365,16 @@ export function removeWorktreeFlow(
   removeWorktree(config.name, worktreeName);
   report(`registry   ${worktreeName} dropped`);
 }
+
+/**
+ * State drifts from disk when a worktree directory is deleted outside `pw`
+ * (manual `rm`, Finder, a crashed flow) — nothing else notices, so `pw ls`
+ * and the picker keep showing an entry nothing backs. This sweeps those out.
+ */
+export function cleanStaleWorktrees(config: RepoConfig, report: Report) {
+  const stale = listWorktrees(config).filter((worktree) => !worktree.exists);
+  for (const worktree of stale) {
+    removeWorktreeFlow(config, worktree.name, true, report);
+  }
+  return stale.map((worktree) => worktree.name);
+}

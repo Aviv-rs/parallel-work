@@ -2,6 +2,7 @@
 import {
   EDITOR_PATH_HELP,
   clearDevLog,
+  cleanStaleWorktrees,
   createWorktreeFlow,
   devLogPath,
   followDevLog,
@@ -328,6 +329,15 @@ function commandRemove(argv: string[]) {
   removeWorktreeFlow(loadRepoConfig(), name, flag(argv, 'force'), report);
 }
 
+function commandClean() {
+  const cleaned = cleanStaleWorktrees(loadRepoConfig(), report);
+  if (!cleaned.length) {
+    console.log('(nothing stale)');
+    return;
+  }
+  console.log(`dropped ${cleaned.length}: ${cleaned.join(', ')}`);
+}
+
 async function commandDev(argv: string[]) {
   const name = argv[0];
   if (!name) throw new Error('usage: pw dev <name> [--stop]');
@@ -412,6 +422,9 @@ try {
     case 'rm':
     case 'remove':
       commandRemove(argv);
+      break;
+    case 'clean':
+      commandClean();
       break;
     case 'list':
     case 'ls':
