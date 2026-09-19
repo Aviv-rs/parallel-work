@@ -1,6 +1,10 @@
 import { resolve } from 'node:path';
 
-import { parkPrompt } from './prompt-park';
+import {
+  parkPrompt,
+  PROMPT_READY_MARKERS,
+  typedPromptText,
+} from './prompt-park';
 import { run, tryRun } from './shell';
 
 export function tmuxSessionName(repoName: string) {
@@ -147,15 +151,14 @@ export function sendPrompt(
   name: string,
   prompt: string,
   worktreePath: string,
+  isWorking = false,
 ) {
   const target = resolveTarget(session, name, worktreePath);
   if (!target) return null;
 
-  const text = prompt.includes('\n')
-    ? `Read ${parkPrompt(worktreePath, name, prompt)} in full and do what it says.`
-    : prompt;
+  const text = typedPromptText(worktreePath, name, prompt);
 
-  clearInputLine(target);
+  clearInputLine(target, isWorking);
   run('tmux', ['send-keys', '-t', target, '-l', text]);
   return { target, submit: () => run('tmux', ['send-keys', '-t', target, 'Enter']) };
 }
@@ -170,16 +173,18 @@ export function sendPrompt(
  * reviewing. Escape drops the suggestion, Ctrl-U clears any real text, and the
  * prompt that follows is the only thing the agent sees.
  *
+ * Escape is skipped while the agent is working, because it interrupts the run
+ * in progress, and no suggestion is showing then anyway.
+ *
  * Losing a half typed human line is the cheaper mistake. It is visible, and the
  * human can retype it. A phantom instruction is invisible and already executed.
  */
-function clearInputLine(target: string) {
-  run('tmux', ['send-keys', '-t', target, 'Escape']);
+function clearInputLine(target: string, isWorking: boolean) {
+  if (!isWorking) run('tmux', ['send-keys', '-t', target, 'Escape']);
   run('tmux', ['send-keys', '-t', target, 'C-u']);
 }
 
 /** The TUI is listening: its input box and its shortcut hint are both up. */
-const PROMPT_READY = ['? for shortcuts', 'Bypassing Permissions'];
 
 /**
  * A dialog, not a prompt. Typing here would answer a question pw did not ask,
@@ -210,7 +215,7 @@ export async function waitForPrompt(
   while (Date.now() - startedAt < timeoutMs) {
     const screen = capturePane(session, name, 40, worktreePath) ?? '';
     if (PROMPT_BLOCKED.some((marker) => marker.test(screen))) return 'blocked';
-    if (PROMPT_READY.some((marker) => screen.includes(marker))) return 'ready';
+    if (PROMPT_READY_MARKERS.some((marker) => screen.includes(marker))) return 'ready';
     await Bun.sleep(500);
   }
   return 'timeout';

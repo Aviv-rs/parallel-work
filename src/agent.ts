@@ -213,11 +213,29 @@ export async function sendToAgent(
   const record = readState(config.name).worktrees[worktreeName];
   if (!record) throw new Error(`no worktree '${worktreeName}'`);
 
+  const session = sessionName(config.name);
+  if (!resolveTarget(session, worktreeName, record.path)) {
+    throw new Error(`no running agent for '${worktreeName}'`);
+  }
+
+  // A working agent queues what it is sent. One that is still starting, or is
+  // sitting on a dialog, would lose it or answer a question pw did not ask.
+  const isWorking = agentStatus(config, worktreeName, record.path).busy;
+  if (!isWorking) {
+    const state = await waitForPrompt(session, worktreeName, record.path);
+    if (state !== 'ready') {
+      throw new Error(
+        `agent '${worktreeName}' is not accepting input (${state}); nothing was typed`,
+      );
+    }
+  }
+
   const sent = sendPrompt(
-    sessionName(config.name),
+    session,
     worktreeName,
     prompt,
     record.path,
+    isWorking,
   );
   if (!sent) throw new Error(`no running agent for '${worktreeName}'`);
 

@@ -36,3 +36,38 @@ function prunePrompts(promptDirectory: string) {
     rmSync(join(promptDirectory, file), { force: true });
   }
 }
+
+const INLINE_PROMPT_MAX_CHARS = 300;
+
+/**
+ * The agent's input box mangles anything long or multi-line typed into it: a
+ * big paste is collapsed and its start can be dropped, and a newline submits
+ * early. Only a short single line is safe to type.
+ */
+export function shouldParkPrompt(prompt: string) {
+  return prompt.includes('\n') || prompt.length > INLINE_PROMPT_MAX_CHARS;
+}
+
+/** What actually gets typed into the pane: the prompt, or a pointer to its park file. */
+export function typedPromptText(
+  worktreePath: string,
+  name: string,
+  prompt: string,
+) {
+  if (!shouldParkPrompt(prompt)) return prompt;
+  return `Read ${parkPrompt(worktreePath, name, prompt)} in full and do what it says.`;
+}
+
+/**
+ * Footer and input-box text that means the TUI is up and listening. The auto
+ * mode footer replaces the shortcuts hint, so both are listed: matching only
+ * the hint made every auto mode session look like it never became ready.
+ */
+export const PROMPT_READY_MARKERS = [
+  '? for shortcuts',
+  'Bypassing Permissions',
+  'shift+tab to cycle',
+  'auto mode on',
+  'accept edits on',
+  'plan mode on',
+];

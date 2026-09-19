@@ -1,7 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { parkPrompt } from './prompt-park';
+import {
+  parkPrompt,
+  PROMPT_READY_MARKERS,
+  typedPromptText,
+} from './prompt-park';
 import { run, tryRun } from './shell';
 import { STATE_DIR } from './state';
 
@@ -178,24 +182,24 @@ export function capturePane(
 }
 
 /**
- * `pane send-text` writes the argument straight to the pty as one argv
- * element (no shell, no line-by-line re-typing), so unlike tmux's
- * `send-keys -l` a multi-line prompt does not risk submitting itself
- * halfway through. The `.pw-prompts/` park file is kept as a fallback path
- * (parkPrompt is exported for callers that want it) but is not needed here.
+ * `pane send-text` writes the argument straight to the pty, and the agent's
+ * input box collapses a long paste and can drop its start. Anything long or
+ * multi-line is parked in `.pw-prompts/` and the pane gets one line pointing
+ * at it, same as tmux.
  */
 export function sendPrompt(
   session: string,
   name: string,
   prompt: string,
   worktreePath: string,
+  isWorking = false,
 ) {
   const target = resolveTarget(session, name, worktreePath);
   if (!target) return null;
 
-  run('herdr', ['pane', 'send-keys', target, 'escape']);
+  if (!isWorking) run('herdr', ['pane', 'send-keys', target, 'escape']);
   run('herdr', ['pane', 'send-keys', target, 'ctrl+u']);
-  run('herdr', ['pane', 'send-text', target, prompt]);
+  run('herdr', ['pane', 'send-text', target, typedPromptText(worktreePath, name, prompt)]);
   return {
     target,
     submit: () => run('herdr', ['pane', 'send-keys', target, 'enter']),
@@ -204,7 +208,6 @@ export function sendPrompt(
 
 export { parkPrompt };
 
-const PROMPT_READY = ['? for shortcuts', 'Bypassing Permissions'];
 const PROMPT_BLOCKED = [
   /do you trust/i,
   /safety check/i,
@@ -224,7 +227,7 @@ export async function waitForPrompt(
   while (Date.now() - startedAt < timeoutMs) {
     const screen = capturePane(session, name, 40, worktreePath) ?? '';
     if (PROMPT_BLOCKED.some((marker) => marker.test(screen))) return 'blocked';
-    if (PROMPT_READY.some((marker) => screen.includes(marker))) return 'ready';
+    if (PROMPT_READY_MARKERS.some((marker) => screen.includes(marker))) return 'ready';
     await Bun.sleep(500);
   }
   return 'timeout';

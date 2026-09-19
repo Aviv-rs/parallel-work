@@ -77,8 +77,9 @@ export function sendPrompt(
   name: string,
   prompt: string,
   worktreePath: string,
+  isWorking = false,
 ) {
-  return impl().sendPrompt(session, name, prompt, worktreePath);
+  return impl().sendPrompt(session, name, prompt, worktreePath, isWorking);
 }
 
 export function waitForPrompt(

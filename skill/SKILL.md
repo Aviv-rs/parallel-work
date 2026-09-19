@@ -233,7 +233,14 @@ human's git status, in their editor's source control panel, and eventually in a 
 request. `pw agent send` already handles a multi-line prompt: it parks the text in
 `.pw-prompts/`, which pw excludes from git, keeps the last few for retracing, and points
 the agent at the path. A file is needed at all only because a newline inside `send-keys`
-submits, so a multi-line message would otherwise fire as several half-prompts.
+submits, so a multi-line message would otherwise fire as several half-prompts. Both backends
+do this, and anything over about 300 characters is parked too, because the agent's input box
+collapses a long paste and can drop its start. That was the cause of kickoffs arriving cut off.
+
+`pw agent send` also refuses to type when the agent is still starting or sitting on a dialog,
+and says so instead of losing the message. A working agent still accepts it and queues it. A
+plan that is untracked in the main checkout is not in a fresh worktree: copy it in before the
+kickoff, or the agent will report it found no plan.
 
 The plan file is the durable artifact. Everything else is a prompt.
 
