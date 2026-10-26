@@ -13,6 +13,7 @@ export const BRANCH_TYPES = [
   'chore',
   'refactor',
   'docs',
+  'ui',
 ] as const;
 
 export type BranchType = (typeof BRANCH_TYPES)[number];

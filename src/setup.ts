@@ -5,6 +5,7 @@ import * as prompt from '@clack/prompts';
 
 import { CONFIG_FILE, configPath, type RepoConfig } from './config';
 import { tryRun } from './shell';
+import { matchCopyEntry } from './worktree';
 
 export interface DetectedDefaults {
   install: string;
@@ -27,9 +28,7 @@ const DEV_SCRIPT_CANDIDATES = ['dev', 'start', 'serve'];
 
 /** Files worth copying that a repo actually has, so the list is never noise. */
 const COPY_CANDIDATES = [
-  '.env',
-  '.env.local',
-  '.env.development',
+  '.env*',
   '.claude',
   'playwright/.auth',
   '.vscode',
@@ -98,7 +97,9 @@ export function detectDefaults(root: string): DetectedDefaults {
     dev: devScript ? `${runner} ${devScript}` : '',
     baseBranch: detectBaseBranch(root),
     taskPrefix: detectTaskPrefix(root),
-    copy: COPY_CANDIDATES.filter((entry) => existsSync(join(root, entry))),
+    copy: COPY_CANDIDATES.filter(
+      (entry) => matchCopyEntry(root, entry).length > 0,
+    ),
     workspaceFile,
   };
 }

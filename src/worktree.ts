@@ -1,5 +1,12 @@
-import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import {
+  cpSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { basename, dirname, join, relative } from 'node:path';
 
 import type { RepoConfig } from './config';
 import { run, tryRun } from './shell';
@@ -71,17 +78,60 @@ export function excludeFromGit(root: string, pattern: string) {
   return true;
 }
 
+function wildcardToRegExp(namePattern: string) {
+  const escaped = namePattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped.replaceAll('*', '.*')}$`);
+}
+
+/**
+ * A plain entry is a path. One with `*` in its last segment (`.env*`) is every
+ * name in that folder it matches.
+ */
+export function matchCopyEntry(root: string, entry: string): string[] {
+  if (!entry.includes('*')) {
+    return existsSync(join(root, entry)) ? [entry] : [];
+  }
+  const folder = dirname(entry);
+  const folderPath = join(root, folder);
+  if (!existsSync(folderPath)) return [];
+  const namePattern = wildcardToRegExp(basename(entry));
+  return readdirSync(folderPath)
+    .filter((name) => namePattern.test(name))
+    .map((name) => (folder === '.' ? name : join(folder, name)))
+    .sort();
+}
+
+function isIgnoredByGit(root: string, path: string) {
+  return tryRun('git', ['check-ignore', '--quiet', path], root).ok;
+}
+
+/**
+ * A wildcard also matches tracked files (`.env.local.example`), which the
+ * worktree already has. Only the ignored ones are copied, so a local edit to a
+ * tracked file never leaks into a new branch.
+ */
+function resolveCopySources(root: string, entry: string) {
+  const matches = matchCopyEntry(root, entry);
+  return entry.includes('*')
+    ? matches.filter((path) => isIgnoredByGit(root, path))
+    : matches;
+}
+
 export function copyIgnoredFiles(config: RepoConfig, worktreePath: string) {
   const copied: string[] = [];
   const missing: string[] = [];
   for (const entry of config.copy) {
-    const source = join(config.root, entry);
-    if (!existsSync(source)) {
+    const sources = resolveCopySources(config.root, entry);
+    if (sources.length === 0) {
       missing.push(entry);
       continue;
     }
-    cpSync(source, join(worktreePath, entry), { recursive: true });
-    copied.push(entry);
+    for (const source of sources) {
+      cpSync(join(config.root, source), join(worktreePath, source), {
+        recursive: true,
+      });
+      copied.push(source);
+    }
   }
   return { copied, missing };
 }

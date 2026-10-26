@@ -1,13 +1,44 @@
 ---
 name: parallel-work
-description: Use when the user asks to work on two or more tasks in parallel without mixing context, invokes /parallel-work, or wants to create, resume, list or delete long-lived agent sessions, each in its own git worktree. Drives the `pw` CLI, which runs each task as an interactive agent in its own tmux window so the user can attach and watch any of them live.
+description: Use when the user asks to work on two or more tasks in parallel without mixing context, invokes /parallel-work, or wants to create, resume, list or delete worktree-based task sessions. Default --self mode - this session plans, implements, tests and converges one task in its own `pw` worktree, no worker agents. --fleet mode - drives the `pw` CLI as a conductor, running each task as an interactive agent in its own tmux window.
 ---
 
 # Parallel Work
 
+Two modes. **`--self` is the default**; `--fleet` opts into the conductor setup.
+
+## `--self` mode (default)
+
+No conductor, no worker agents, no tmux sessions. This session owns one task in one
+worktree and does the whole thing itself, start to finish: plan, implement, run tests,
+typecheck and lint, `pw qa`, converge. Parallelism comes from the human opening one
+session per task, not from this session spawning children.
+
+1. **Plan.** Run `/concise-plan` for the task, show the human the `plan.md` path, wait for
+   approval. The plan gate below applies unchanged.
+2. **Worktree.** `pw wt <TASK-ID>-<slug>` from the main checkout. Copy the plan in if it is
+   untracked in the main checkout. From here on, every read, edit and command targets the
+   worktree path, never the main checkout.
+3. **Implement.** Read AGENTS.md and the plan, then build it. Tick and strike the plan
+   checklist as you go.
+4. **Verify.** Run tests (own spec file only, never the bare e2e suite, none for a purely
+   visual change), typecheck and lint yourself in the worktree. Fix what fails.
+5. **Converge.** Do the converge pass below yourself, then report Done / Partial / Outside
+   the plan and the click path.
+
+What does not apply in `--self`: `pw agent *`, kickoff prompts, the escalation clause,
+`pw qa --agent` / `--tell`, relaying. What still applies: the plan gate, `pw wt` / `pw rm`
+(never `git worktree add` by hand), the migration rule (generate with
+`bun db:generate --name=...`, never hand-write in `drizzle/`, never run `db:migrate:*` or
+`db:push:*`), the design cache cleanup, and **no commit unless the human asks**.
+
+## `--fleet` mode
+
 Run several independent tasks as separate long-lived agent sessions, one per worktree, so
 their contexts never bleed into each other. This session is the conductor: it relays
-instructions and reports results, it does not do the work itself.
+instructions and reports results, it does not do the work itself. Everything from here
+down describes this mode, except the plan gate, worktree creation, migrations, the converge
+pass and cleanup, which `--self` shares.
 
 Everything goes through one tool, the `pw` CLI
 (https://github.com/Aviv-rs/parallel-work). It owns worktrees, gitignored files, installs,

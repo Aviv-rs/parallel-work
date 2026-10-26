@@ -221,7 +221,7 @@ leaves a gitlink that can be committed by accident.
 {
   "taskPrefix": "EROS",
   "baseBranch": "origin/master",
-  "copy": [".env", ".env.local", ".claude", "playwright/.auth"],
+  "copy": [".env*", ".claude", "playwright/.auth"],
   "install": "bun install",
   "dev": "bun dev",
   "test": "bun run test",
@@ -234,6 +234,10 @@ leaves a gitlink that can be committed by accident.
 `copy` is the point of the tool. `git worktree add` only materialises tracked files, so
 anything gitignored is missing and the failure usually points somewhere else. A missing
 `playwright/.auth` shows up as a module resolution error, not a missing file.
+
+An entry with `*` in its last segment matches every name in that folder: `.env*` picks up
+`.env`, `.env.local`, `.env.staging` and whatever comes next. A wildcard copies only the
+matches git ignores, so a tracked `.env.example` is never overwritten.
 
 Written for you by the first run or by `pw init`, so hand-editing is optional.
 

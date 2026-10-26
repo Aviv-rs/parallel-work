@@ -51,7 +51,7 @@ describe('detectDefaults', () => {
 
   it('offers only the ignored files the repo actually has', () => {
     const root = repoFixture({ '.env': '', '.env.local': '' });
-    expect(detectDefaults(root).copy).toEqual(['.env', '.env.local']);
+    expect(detectDefaults(root).copy).toEqual(['.env*']);
   });
 
   it('finds the code-workspace file', () => {

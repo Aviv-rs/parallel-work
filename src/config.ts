@@ -29,7 +29,7 @@ export function hasConfigFile(root: string) {
   return existsSync(configPath(root));
 }
 
-const DEFAULT_COPY = ['.env', '.env.local', '.claude', 'playwright/.auth'];
+const DEFAULT_COPY = ['.env*', '.claude', 'playwright/.auth'];
 
 /**
  * The spec lane runs the repo's own checks, so it has to find them. A script
