@@ -172,6 +172,12 @@ export function removeWorktreeDirectory(
   worktreePath: string,
   force: boolean,
 ) {
+  // Leftover folder (dev server cache written after removal) is not a worktree.
+  if (!existsSync(join(worktreePath, '.git'))) {
+    rmSync(worktreePath, { recursive: true, force: true });
+    run('git', ['worktree', 'prune'], config.root);
+    return { removed: true, viaForce: false };
+  }
   const args = ['worktree', 'remove', worktreePath];
   if (force) args.push('--force');
   const result = tryRun('git', args, config.root);
